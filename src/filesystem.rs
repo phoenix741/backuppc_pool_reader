@@ -49,7 +49,7 @@ pub struct BackupPCFileAttribute {
 impl BackupPCFileAttribute {
     pub fn from_file_attribute(file: FileAttributes, child_ino: u64) -> Self {
         BackupPCFileAttribute {
-            name: file.name.clone(),
+            name: file.name,
             attr: FileAttr {
                 ino: child_ino,
                 size: file.size,

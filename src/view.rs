@@ -69,12 +69,12 @@ impl BackupPCView {
             .filter_map(|share| {
                 let share_array = sanitize_path(&share);
                 if path.starts_with(&share_array) {
-                    selected_share = Some(share.clone());
                     share_size = share_array.len();
+                    selected_share = Some(share);
                     None
                 } else if path.eq(&share_array) {
-                    selected_share = Some(share.clone());
                     share_size = share_array.len();
+                    selected_share = Some(share);
                     None
                 } else if share_array.starts_with(path) {
                     Some(share_array[path.len()..][0].to_string())

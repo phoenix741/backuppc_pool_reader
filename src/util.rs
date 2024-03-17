@@ -133,9 +133,6 @@ pub fn mangle(path_um: &str) -> String {
 ///
 /// A new iterable with only unique values
 pub fn unique<T: Eq + Hash + Clone>(iterable: impl IntoIterator<Item = T>) -> Vec<T> {
-    let mut seen = HashSet::new();
-    iterable
-        .into_iter()
-        .filter(|e| seen.insert(e.clone()))
-        .collect()
+    let unique_elts: HashSet<T> = HashSet::from_iter(iterable);
+    unique_elts.into_iter().collect()
 }
