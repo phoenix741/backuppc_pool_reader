@@ -95,7 +95,7 @@ impl<R: BufRead> BufRead for InterpretAdapter<R> {
 
 /* BackupPCReader */
 
-/// A reader that decompresses data from a source using the BackupPC compression format.
+/// A reader that decompresses data from a source using the `BackupPC` compression format.
 pub struct BackupPCReader<R: Read> {
     decoder: Option<ZlibDecoder<InterpretAdapter<BufReader<R>>>>,
 }
@@ -133,9 +133,8 @@ impl<R: Read> BackupPCReader<R> {
     fn read_some_bytes(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
             let decoder = self.decoder.as_mut();
-            match decoder {
-                None => return Ok(0),
-                _ => {}
+            if decoder.is_none() {
+                return Ok(0);
             }
 
             let decoder_read_result = decoder.unwrap().read(buf);
@@ -156,18 +155,15 @@ impl<R: Read> BackupPCReader<R> {
 
             if count == 0 {
                 let decoder = self.decoder.take();
-                match decoder {
-                    Some(decoder) => {
-                        let mut reader = decoder.into_inner();
-                        // S'il reste encore des octets à lire dans reader alors on continue, sinon on s'arrête
-                        if reader.fill_buf()?.len() == 0 {
-                            return Ok(0);
-                        }
-                        reader.reset();
-
-                        self.decoder = Some(ZlibDecoder::new(reader));
+                if let Some(decoder) = decoder {
+                    let mut reader = decoder.into_inner();
+                    // S'il reste encore des octets à lire dans reader alors on continue, sinon on s'arrête
+                    if reader.fill_buf()?.is_empty() {
+                        return Ok(0);
                     }
-                    None => {}
+                    reader.reset();
+
+                    self.decoder = Some(ZlibDecoder::new(reader));
                 }
             }
         }

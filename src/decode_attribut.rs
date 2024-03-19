@@ -6,7 +6,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 
 use crate::hosts::BackupInformation;
 
-const BPC_ATTRIB_TYPE_XATTR: u32 = 0x17565353;
+const BPC_ATTRIB_TYPE_XATTR: u32 = 0x1756_5353;
 
 /// Enum representing the type of a file.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -54,7 +54,7 @@ pub trait VarintRead: Read {
             self.read_exact(&mut buf)?;
 
             let byte = buf[0];
-            let val = (byte & 0x7F) as u64;
+            let val = u64::from(byte & 0x7F);
             if shift >= 64 || val << shift >> shift != val {
                 eprintln!("Varint too large: probably corrupted data");
                 return Err(io::Error::new(
@@ -85,7 +85,7 @@ pub struct XattrEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-/// Structure representing a BackupPC digest.
+/// Structure representing a `BackupPC` digest.
 pub struct BpcDigest {
     /// Length of the digest.
     pub len: u64,
@@ -150,7 +150,7 @@ impl FileAttributes {
         }
     }
 
-    pub fn from_backup(backup: BackupInformation) -> Self {
+    pub fn from_backup(backup: &BackupInformation) -> Self {
         Self {
             name: backup.num.to_string(),
             type_: FileType::Dir,
@@ -249,14 +249,13 @@ impl FileAttributes {
             4 => FileType::Blockdev,
             5 => FileType::Dir,
             6 => FileType::Fifo,
-            7 => FileType::Unknown,
             8 => FileType::Socket,
-            9 => FileType::Unknown,
+            7 | 9 => FileType::Unknown,
             10 => FileType::Deleted,
             other => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("Invalid file type {}", other),
+                    format!("Invalid file type {other}"),
                 ))
             }
         };
@@ -304,7 +303,7 @@ impl FileAttributes {
             nlinks,
             bpc_digest: BpcDigest {
                 len: digest_len as u64,
-                digest: digest,
+                digest,
             },
             xattrs,
         })
@@ -354,9 +353,9 @@ impl AttributeFile {
                 Err(e) => {
                     if e.kind() == io::ErrorKind::UnexpectedEof {
                         break;
-                    } else {
-                        eprintln!("Error reading file attributes: {}", e);
                     }
+
+                    eprintln!("Error reading file attributes: {e}");
                 }
             }
         }

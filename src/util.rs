@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::{collections::HashSet, hash::Hash};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -11,10 +12,11 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 /// # Returns
 ///
 /// A string representing the hexadecimal values of the bytes in the vector.
-pub fn vec_to_hex_string(vec: &Vec<u8>) -> String {
-    vec.iter()
-        .map(|byte| format!("{:02x}", byte))
-        .collect::<String>()
+pub fn vec_to_hex_string(vec: &[u8]) -> String {
+    vec.iter().fold(String::new(), |mut output, byte| {
+        let _ = write!(output, "{byte:02x}");
+        output
+    })
 }
 
 /// Converts a hexadecimal string to a vector of bytes.
@@ -113,14 +115,9 @@ pub fn mangle(path_um: &str) -> String {
         return String::new();
     }
 
-    let mangled_components: Vec<String> = path_um
-        .split('/')
-        .map(|component| mangle_filename(component))
-        .collect();
+    let mangled_components: Vec<String> = path_um.split('/').map(mangle_filename).collect();
 
-    let mangled_path = mangled_components.join("/");
-
-    format!("{}", mangled_path)
+    mangled_components.join("/")
 }
 
 /// Filter all value to return only unique values

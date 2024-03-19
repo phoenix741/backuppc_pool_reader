@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::util;
 
-/// Finds a file in the BackupPC pool directory based on its file hash.
+/// Finds a file in the `BackupPC` pool directory based on its file hash.
 ///
 /// The function takes the top directory path, the file hash as a vector of bytes,
 /// and an optional collision ID. It constructs the file path based on the top directory,
@@ -16,7 +16,7 @@ use crate::util;
 ///
 /// # Arguments
 ///
-/// * `topdir` - The top directory path where the BackupPC pool is located.
+/// * `topdir` - The top directory path where the `BackupPC` pool is located.
 /// * `file_hash` - The file hash as a vector of bytes.
 /// * `collid` - An optional collision ID.
 ///
@@ -63,10 +63,10 @@ pub fn find_file_in_backuppc(
     let seconds = format!("{:02x}", (file_hash[1] & 0xfe));
     let file_hash = util::vec_to_hex_string(file_hash);
     let collid = match collid {
-        Some(collid) => format!("{:02x}", collid),
-        None => String::from(""),
+        Some(collid) => format!("{collid:02x}"),
+        None => String::new(),
     };
-    let file_hash = format!("{}{}", collid, file_hash);
+    let file_hash = format!("{collid}{file_hash}");
 
     let pool_path = Path::new(topdir)
         .join("pool")
@@ -87,6 +87,6 @@ pub fn find_file_in_backuppc(
         let path = cpool_path.to_str().ok_or("cpool path not exists")?;
         Ok((path.to_string(), true))
     } else {
-        Err(format!("File {} does not exist", file_hash))
+        Err(format!("File {file_hash} does not exist"))
     }
 }

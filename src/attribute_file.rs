@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[cfg_attr(test, automock)]
-pub trait AttributeFileSearchTrait {
+pub trait SearchTrait {
     fn read_attrib(file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>>;
     fn list_file_from_dir(
         topdir: &str,
@@ -29,9 +29,9 @@ pub trait AttributeFileSearchTrait {
     ) -> Result<Vec<FileAttributes>>;
 }
 
-pub struct AttributeFileSearch;
+pub struct Search;
 
-impl AttributeFileSearch {
+impl Search {
     fn search_attrib_file(backup_dir: &str) -> Option<(String, std::path::PathBuf)> {
         // Search for a file starting with the filename "attrib_" in the directory
         let file = std::fs::read_dir(backup_dir)
@@ -42,11 +42,7 @@ impl AttributeFileSearch {
                     .to_str()
                     .map(|s| (s.to_string(), entry.path())),
                 Err(err) => {
-                    eprintln!(
-                        "Error reading directory: {}, {}",
-                        backup_dir,
-                        err.to_string()
-                    );
+                    eprintln!("Error reading directory: {backup_dir}, {err}");
 
                     None
                 }
@@ -57,7 +53,7 @@ impl AttributeFileSearch {
     }
 }
 
-impl AttributeFileSearchTrait for AttributeFileSearch {
+impl SearchTrait for Search {
     fn read_attrib(file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>> {
         let input_file = File::open(file)?;
         if is_compressed {
@@ -81,22 +77,19 @@ impl AttributeFileSearchTrait for AttributeFileSearch {
         filename: &str,
     ) -> Result<Vec<FileAttributes>> {
         let backup_dir = format!(
-            "{}/pc/{}/{}/{}/{}",
-            topdir,
-            hostname,
-            backup_number,
+            "{topdir}/pc/{hostname}/{backup_number}/{}/{}",
             mangle_filename(share),
             mangle(filename)
         );
 
-        let file = AttributeFileSearch::search_attrib_file(&backup_dir);
+        let file = Search::search_attrib_file(&backup_dir);
 
         if let Some((_, file)) = file {
             // Get the hash at the right of the _ symbole
             let file = file.to_str().ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Invalid file path: {:?}", file),
+                    format!("Invalid file path: {file:?}"),
                 )
             })?;
             let file = file.split('_').collect::<Vec<&str>>();
@@ -105,11 +98,11 @@ impl AttributeFileSearchTrait for AttributeFileSearch {
                 return Ok(Vec::new());
             }
 
-            let md5_hash: Vec<u8> = hex_string_to_vec(&file);
+            let md5_hash: Vec<u8> = hex_string_to_vec(file);
 
             match find_file_in_backuppc(topdir, &md5_hash, None) {
                 Ok((file_path, is_compressed)) => {
-                    let attributes = AttributeFileSearch::read_attrib(&file_path, is_compressed)?;
+                    let attributes = Search::read_attrib(&file_path, is_compressed)?;
                     return Ok(attributes);
                 }
                 Err(message) => {
@@ -134,16 +127,15 @@ impl AttributeFileSearchTrait for AttributeFileSearch {
         let filename = backup_dir_parts.last().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Invalid path {}", filename),
+                format!("Invalid path {filename}"),
             )
         })?;
         let path = backup_dir_parts[..backup_dir_parts.len() - 1].join("/");
 
-        match AttributeFileSearch::list_file_from_dir(topdir, hostname, backup_number, share, &path)
-        {
+        match Search::list_file_from_dir(topdir, hostname, backup_number, share, &path) {
             Ok(attributes) => Ok(attributes
                 .into_iter()
-                .filter(|attr| attr.name.cmp(&filename.to_string()) == Ordering::Equal)
+                .filter(|attr| attr.name.cmp(&(filename.to_string())) == Ordering::Equal)
                 .collect()),
             Err(e) => Err(e),
         }

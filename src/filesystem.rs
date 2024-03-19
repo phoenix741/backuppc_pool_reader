@@ -18,11 +18,11 @@ use std::{collections::HashMap, ffi::OsStr};
 
 use crate::decode_attribut::{FileAttributes, FileType as BackupPCFileType};
 use crate::util::Result;
-use crate::view::BackupPCView;
+use crate::view::BackupPC;
 
-const TTL_HOST: Duration = Duration::from_secs(86400);
-const TTL_BACKUPS: Duration = Duration::from_secs(3600);
-const TTL_REST: Duration = Duration::from_secs(1000000);
+const TTL_HOST: Duration = Duration::from_secs(86_400);
+const TTL_BACKUPS: Duration = Duration::from_secs(3_600);
+const TTL_REST: Duration = Duration::from_secs(1_000_000);
 
 const CACHE_SIZE: usize = 2048;
 
@@ -60,8 +60,6 @@ impl BackupPCFileAttribute {
                 ctime: UNIX_EPOCH + Duration::from_millis(file.mtime),
                 crtime: UNIX_EPOCH + Duration::from_millis(file.mtime),
                 kind: match file.type_ {
-                    BackupPCFileType::File => FileType::RegularFile,
-                    BackupPCFileType::Hardlink => FileType::RegularFile,
                     BackupPCFileType::Symlink => FileType::Symlink,
                     BackupPCFileType::Chardev => FileType::CharDevice,
                     BackupPCFileType::Blockdev => FileType::BlockDevice,
@@ -105,7 +103,7 @@ pub struct OpenedFile {
 }
 
 pub struct BackupPCFS {
-    view: BackupPCView,
+    view: BackupPC,
     inodes: HashMap<u64, CacheElement>,
     cache: LruCache<u64, Vec<BackupPCFileAttribute>>,
     opened: HashMap<u64, OpenedFile>,
@@ -115,7 +113,7 @@ impl BackupPCFS {
     pub fn new(topdir: &str) -> Self {
         BackupPCFS {
             inodes: HashMap::new(),
-            view: BackupPCView::new(topdir),
+            view: BackupPC::new(topdir),
             cache: LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap()),
             opened: HashMap::new(),
         }
@@ -163,11 +161,12 @@ impl BackupPCFS {
                     return None;
                 }
 
-                let mut path: Vec<String> = path.iter().map(|s| s.to_string()).collect();
+                let mut path: Vec<String> =
+                    path.iter().map(std::string::ToString::to_string).collect();
                 path.push(file.name.clone());
 
                 let key = CacheElement {
-                    path: path,
+                    path,
                     parent_ino: ino,
                 };
                 let child_ino = self.generate_new_ino(&key);
@@ -197,7 +196,7 @@ impl BackupPCFS {
 
         let path = cache_element.path.clone();
 
-        match self.list_files(ino, path.iter().map(|s| s.as_str()).collect()) {
+        match self.list_files(ino, path.iter().map(std::string::String::as_str).collect()) {
             Ok(files) => Ok(files),
             Err(err) => {
                 eprintln!("Error listing files of {}: {}", path.join("/"), err);
@@ -208,7 +207,7 @@ impl BackupPCFS {
 
     fn list_attributes_with_cache(&mut self, ino: u64) -> Result<Vec<BackupPCFileAttribute>> {
         if let Some(cached_result) = self.cache.get(&ino) {
-            return Ok(cached_result.to_vec());
+            return Ok(cached_result.clone());
         }
 
         let result = self.list_attributes(ino)?;
@@ -245,12 +244,9 @@ impl BackupPCFS {
         // Add the "." and ".." entries
         if ino != 1 {
             let element = self.inodes.get(&ino);
-            match element {
-                Some(parent) => {
-                    let _ = reply.add(ino, 1, FileType::Directory, ".");
-                    let _ = reply.add(parent.parent_ino, 2, FileType::Directory, "..");
-                }
-                None => {}
+            if let Some(parent) = element {
+                let _ = reply.add(ino, 1, FileType::Directory, ".");
+                let _ = reply.add(parent.parent_ino, 2, FileType::Directory, "..");
             }
         }
 
@@ -301,7 +297,7 @@ impl BackupPCFS {
         ))?;
 
         let path = cache_element.path.clone();
-        let path_refs: Vec<&str> = path.iter().map(|s| s.as_str()).collect();
+        let path_refs: Vec<&str> = path.iter().map(std::string::String::as_str).collect();
 
         match self.view.read_file(&path_refs) {
             Ok(reader) => Ok(reader),
@@ -394,8 +390,8 @@ impl Filesystem for BackupPCFS {
         match self.open(ino) {
             Ok(fh) => reply.opened(fh, 0),
             Err(err) => {
-                eprintln!("Error opening ino {}: {}", ino, err);
-                reply.error(ENOENT)
+                eprintln!("Error opening ino {ino}: {err}");
+                reply.error(ENOENT);
             }
         }
     }
@@ -414,8 +410,8 @@ impl Filesystem for BackupPCFS {
         match self.read_ino(ino, fh, offset, size) {
             Ok(data) => reply.data(&data),
             Err(err) => {
-                eprintln!("Error reading ino {}: {}", ino, err);
-                reply.error(ENOENT)
+                eprintln!("Error reading ino {ino}: {err}");
+                reply.error(ENOENT);
             }
         }
     }
@@ -445,11 +441,11 @@ impl Filesystem for BackupPCFS {
         if offset == 0 {
             // List host and add it to the cache
             match self.fill_reply_from_files(&mut reply, ino) {
-                Ok(_) => {
+                Ok(()) => {
                     reply.ok();
                 }
                 Err(e) => {
-                    eprintln!("Error reading dir {}: {}", ino, e);
+                    eprintln!("Error reading dir {ino}: {e}");
                     reply.error(ENOENT);
                 }
             }

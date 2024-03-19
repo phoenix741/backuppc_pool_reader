@@ -5,9 +5,9 @@ use std::fs::File;
 /// - the list of files of a directory of a share in a backup
 /// - the ability to read the content of a file
 ///
-/// The goal of this module is to aggregate all this functionnaly
+/// The goal of this module is to aggregate all this functionally
 ///
-/// The BackupView is able to
+/// The `BackupView` is able to
 /// - merge the list of file list from incremental backups
 /// - cache the metadata of the files in case of multiple access
 ///
@@ -17,14 +17,12 @@ use crate::compress::BackupPCReader;
 use crate::decode_attribut::FileAttributes;
 
 #[cfg(not(test))]
-use crate::attribute_file::{AttributeFileSearch, AttributeFileSearchTrait};
+use crate::attribute_file::{Search, SearchTrait};
 #[cfg(not(test))]
 use crate::hosts::{Hosts, HostsTrait};
 
 #[cfg(test)]
-use crate::attribute_file::{
-    AttributeFileSearchTrait, MockAttributeFileSearchTrait as AttributeFileSearch,
-};
+use crate::attribute_file::{MockSearchTrait as Search, SearchTrait};
 #[cfg(test)]
 use crate::hosts::{HostsTrait, MockHostsTrait as Hosts};
 use crate::pool::find_file_in_backuppc;
@@ -35,19 +33,19 @@ const EMPTY_MD5_DIGEST: [u8; 16] = [
     0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04, 0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8, 0x42, 0x7e,
 ];
 
-pub struct BackupPCView {
+pub struct BackupPC {
     topdir: String,
 }
 
 fn sanitize_path(path: &str) -> Vec<&str> {
-    path.split("/")
+    path.split('/')
         .filter(|s| !s.is_empty())
         .collect::<Vec<&str>>()
 }
 
-impl BackupPCView {
+impl BackupPC {
     pub fn new(topdir: &str) -> Self {
-        BackupPCView {
+        BackupPC {
             topdir: topdir.to_string(),
         }
     }
@@ -68,11 +66,7 @@ impl BackupPCView {
             .into_iter()
             .filter_map(|share| {
                 let share_array = sanitize_path(&share);
-                if path.starts_with(&share_array) {
-                    share_size = share_array.len();
-                    selected_share = Some(share);
-                    None
-                } else if path.eq(&share_array) {
+                if path.starts_with(&share_array) || path.eq(&share_array) {
                     share_size = share_array.len();
                     selected_share = Some(share);
                     None
@@ -93,17 +87,14 @@ impl BackupPCView {
         match path.len() {
             0 => {
                 let hosts = Hosts::list_hosts(&self.topdir)?;
-                Ok(hosts
-                    .into_iter()
-                    .map(|h| FileAttributes::from_host(h))
-                    .collect())
+                Ok(hosts.into_iter().map(FileAttributes::from_host).collect())
             }
             1 => {
                 let backups = Hosts::list_backups(&self.topdir, path[0]);
                 match backups {
                     Ok(backups) => Ok(backups
                         .into_iter()
-                        .map(|backup| FileAttributes::from_backup(backup))
+                        .map(|a| FileAttributes::from_backup(&a))
                         .collect()),
                     Err(err) => {
                         // If the file isn't found, it's because we should return empty vec
@@ -123,21 +114,17 @@ impl BackupPCView {
                 let (shares, selected_share, share_size) =
                     self.list_shares_of(path[0], path[1].parse::<u32>().unwrap_or(0), &path[2..])?;
 
-                let shares = shares
-                    .into_iter()
-                    .map(|s| FileAttributes::from_share(s))
-                    .collect();
+                let shares = shares.into_iter().map(FileAttributes::from_share).collect();
 
                 match selected_share {
                     None => Ok(shares),
-                    Some(selected_share) => AttributeFileSearch::list_file_from_dir(
+                    Some(selected_share) => Search::list_file_from_dir(
                         &self.topdir,
                         path[0],
                         path[1].parse::<u32>().unwrap_or(0),
                         &selected_share,
                         &path[(2 + share_size)..].join("/"),
-                    )
-                    .map(|files| files.into_iter().map(|file| file).collect()),
+                    ),
                 }
             }
         }
@@ -194,7 +181,7 @@ impl BackupPCView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::attribute_file::MockAttributeFileSearchTrait;
+    use crate::attribute_file::MockSearchTrait;
     use crate::decode_attribut::FileType;
     use crate::hosts::{BackupInformation, MockHostsTrait};
     use mockall::predicate::*;
@@ -282,20 +269,20 @@ mod tests {
     }
 
     fn create_view() -> (
-        BackupPCView,
+        BackupPC,
         crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_hosts::Context,
         crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_backups::Context,
         crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_backups::Context,
         crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_backups::Context,
         crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_shares::Context,
         crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_shares::Context,
-        crate::attribute_file::__mock_MockAttributeFileSearchTrait_AttributeFileSearchTrait::__list_file_from_dir::Context,
-        crate::attribute_file::__mock_MockAttributeFileSearchTrait_AttributeFileSearchTrait::__list_file_from_dir::Context,
-        crate::attribute_file::__mock_MockAttributeFileSearchTrait_AttributeFileSearchTrait::__list_file_from_dir::Context,
-        crate::attribute_file::__mock_MockAttributeFileSearchTrait_AttributeFileSearchTrait::__list_file_from_dir::Context,
-    ){
+        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
+        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
+        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
+        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
+    ) {
         let topdir = "/var/lib/backuppc";
-        let view = BackupPCView::new(topdir);
+        let view = BackupPC::new(topdir);
 
         let mut hosts = Vec::new();
         hosts.push("pc-1".to_string());
@@ -358,8 +345,7 @@ mod tests {
             .with(eq(topdir), eq("pc-1"), eq(2))
             .returning(move |_, _, _| Ok(shares_pc1_backup2.clone()));
 
-        let list_file_pc1_backup1_volume1_test_ctx =
-            MockAttributeFileSearchTrait::list_file_from_dir_context();
+        let list_file_pc1_backup1_volume1_test_ctx = MockSearchTrait::list_file_from_dir_context();
         list_file_pc1_backup1_volume1_test_ctx
             .expect()
             .with(eq(topdir), eq("pc-1"), eq(1), eq("/volume1/test"), eq(""))
@@ -371,7 +357,7 @@ mod tests {
             });
 
         let list_file_pc1_backup1_volume1_test_supertest_ctx =
-            MockAttributeFileSearchTrait::list_file_from_dir_context();
+            MockSearchTrait::list_file_from_dir_context();
         list_file_pc1_backup1_volume1_test_supertest_ctx
             .expect()
             .with(
@@ -389,7 +375,7 @@ mod tests {
             });
 
         let list_file_pc1_backup1_volume1_test_supertest_de_ctx =
-            MockAttributeFileSearchTrait::list_file_from_dir_context();
+            MockSearchTrait::list_file_from_dir_context();
         list_file_pc1_backup1_volume1_test_supertest_de_ctx
             .expect()
             .with(
@@ -409,7 +395,7 @@ mod tests {
             });
 
         let list_file_pc1_backup1_volume1_test_supertest_de_test_ctx =
-            MockAttributeFileSearchTrait::list_file_from_dir_context();
+            MockSearchTrait::list_file_from_dir_context();
         list_file_pc1_backup1_volume1_test_supertest_de_test_ctx
             .expect()
             .with(

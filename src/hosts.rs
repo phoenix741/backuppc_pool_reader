@@ -115,7 +115,7 @@ impl HostsTrait for Hosts {
                     }
                 }
                 Err(err) => {
-                    eprintln!("Error reading pc directory: {}", err.to_string());
+                    eprintln!("Error reading pc directory: {err}");
                 }
             }
         }
@@ -130,12 +130,12 @@ impl HostsTrait for Hosts {
     ///
     fn list_backups(topdir: &str, hostname: &str) -> Result<Vec<BackupInformation>> {
         let mut backups = Vec::new();
-        let path = format!("{}/pc/{}/backups", topdir, hostname);
+        let path = format!("{topdir}/pc/{hostname}/backups");
 
         // Open the file and read each line
         // Fields are separated by tab
 
-        let file = File::open(&path)?;
+        let file = File::open(path)?;
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
@@ -178,7 +178,7 @@ impl HostsTrait for Hosts {
     fn list_shares(topdir: &str, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
         let pc_dir = std::path::Path::new(topdir).join("pc");
         let host_dir = pc_dir.join(hostname);
-        let share_dir = host_dir.join(format!("{}", backup_number));
+        let share_dir = host_dir.join(format!("{backup_number}"));
 
         let mut shares = Vec::new();
 
@@ -202,12 +202,7 @@ impl HostsTrait for Hosts {
                     }
                 }
                 Err(err) => {
-                    eprintln!(
-                        "Error reading share directory of {} {}: {}",
-                        hostname,
-                        backup_number,
-                        err.to_string()
-                    );
+                    eprintln!("Error reading share directory of {hostname} {backup_number}: {err}",);
                 }
             }
         }

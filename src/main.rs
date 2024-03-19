@@ -8,7 +8,7 @@ mod util;
 mod view;
 
 use crate::hosts::HostsTrait;
-use attribute_file::{AttributeFileSearch, AttributeFileSearchTrait};
+use attribute_file::{Search, SearchTrait};
 use clap::Parser;
 use decode_attribut::{FileAttributes, FileType};
 use std::env;
@@ -60,7 +60,7 @@ fn plain_to_stdout(input_file: &str) -> Result<(), Error> {
 }
 
 fn pool_file_to_stdout(topdir: &str, file_hash: &str) -> Result<(), String> {
-    let md5_hash: Vec<u8> = util::hex_string_to_vec(&file_hash);
+    let md5_hash: Vec<u8> = util::hex_string_to_vec(file_hash);
 
     match pool::find_file_in_backuppc(topdir, &md5_hash, None) {
         Ok((file_path, is_compressed)) => {
@@ -72,9 +72,7 @@ fn pool_file_to_stdout(topdir: &str, file_hash: &str) -> Result<(), String> {
 
             Ok(())
         }
-        Err(message) => {
-            return Err(message.to_string());
-        }
+        Err(message) => Err(message.to_string()),
     }
 }
 
@@ -86,8 +84,7 @@ fn print_ls(mut attrs: Vec<FileAttributes>) {
     for attr in attrs {
         // Show the mode in the form drwxr-xr-x with the help of attr.mode and attr.type_
         let mode = match attr.type_ {
-            FileType::File => "-",
-            FileType::Hardlink => "-",
+            FileType::File | FileType::Hardlink => "-",
             FileType::Symlink => "l",
             FileType::Chardev => "c",
             FileType::Blockdev => "b",
@@ -126,28 +123,18 @@ fn read_file_to_stdout(
     file: &str,
 ) -> Result<(), String> {
     if hostname.is_some() || number.is_some() || share.is_some() {
-        let hostname = match hostname {
-            Some(value) => value,
-            None => {
-                return Err("No host specified".to_string());
-            }
+        let Some(hostname) = hostname else {
+            return Err("No host specified".to_string());
         };
-        let backup_number = match number {
-            Some(value) => value,
-            None => {
-                return Err("No backup number specified".to_string());
-            }
+        let Some(backup_number) = number else {
+            return Err("No backup number specified".to_string());
         };
 
-        let share = match share {
-            Some(value) => value,
-            None => {
-                return Err("No share specified".to_string());
-            }
+        let Some(share) = share else {
+            return Err("No share specified".to_string());
         };
 
-        let attrs =
-            AttributeFileSearch::get_file(topdir, &hostname, backup_number, &share, file).unwrap();
+        let attrs = Search::get_file(topdir, &hostname, backup_number, &share, file).unwrap();
         if attrs.len() == 1 && attrs[0].bpc_digest.len > 0 {
             let hex = util::vec_to_hex_string(&attrs[0].bpc_digest.digest);
             pool_file_to_stdout(topdir, &hex)?;
@@ -159,7 +146,7 @@ fn read_file_to_stdout(
 
     let file_path = std::path::Path::new(&file);
     if file_path.exists() {
-        uncompress_to_stdout(&file).unwrap();
+        uncompress_to_stdout(file).unwrap();
         Ok(())
     } else {
         pool_file_to_stdout(topdir, file)
@@ -179,40 +166,26 @@ fn main() {
 
     match command.as_str() {
         "cat" => {
-            read_file_to_stdout(&topdir, args.host, args.number, args.share, &filename).unwrap()
+            read_file_to_stdout(&topdir, args.host, args.number, args.share, &filename).unwrap();
         }
         "ls" => {
-            let hostname = match args.host {
-                Some(value) => value,
-                None => {
-                    println!("No host specified");
-                    return;
-                }
+            let Some(hostname) = args.host else {
+                println!("No host specified");
+                return;
             };
-            let backup_number = match args.number {
-                Some(value) => value,
-                None => {
-                    println!("No backup number specified");
-                    return;
-                }
+            let Some(backup_number) = args.number else {
+                println!("No backup number specified");
+                return;
             };
 
-            let share = match args.share {
-                Some(value) => value,
-                None => {
-                    println!("No share specified");
-                    return;
-                }
+            let Some(share) = args.share else {
+                println!("No share specified");
+                return;
             };
 
-            let attrs = AttributeFileSearch::list_file_from_dir(
-                &topdir,
-                &hostname,
-                backup_number,
-                &share,
-                &filename,
-            )
-            .unwrap();
+            let attrs =
+                Search::list_file_from_dir(&topdir, &hostname, backup_number, &share, &filename)
+                    .unwrap();
             print_ls(attrs);
         }
         "hosts" => {
@@ -220,11 +193,11 @@ fn main() {
             match hosts {
                 Ok(hosts) => {
                     for host in hosts {
-                        println!("{}", host);
+                        println!("{host}");
                     }
                 }
                 Err(message) => {
-                    println!("{}", message);
+                    println!("{message}");
                 }
             }
         }
@@ -237,7 +210,7 @@ fn main() {
                     }
                 }
                 Err(message) => {
-                    println!("{}", message);
+                    println!("{message}");
                 }
             }
         }
@@ -245,8 +218,8 @@ fn main() {
             let mountpoint = filename;
             let options = [];
 
-            fuser::mount2(filesystem::BackupPCFS::new(&topdir), &mountpoint, &options).unwrap();
+            fuser::mount2(filesystem::BackupPCFS::new(&topdir), mountpoint, &options).unwrap();
         }
-        _ => println!("Unknown command: {}", command),
+        _ => println!("Unknown command: {command}"),
     }
 }
