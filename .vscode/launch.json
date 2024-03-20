@@ -1,0 +1,64 @@
+{
+  // Utilisez IntelliSense pour en savoir plus sur les attributs possibles.
+  // Pointez pour afficher la description des attributs existants.
+  // Pour plus d'informations, visitez : https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    // Launch the command
+    // BPC_TOPDIR=/media/phoenix/aef7052b-b422-4b66-83a3-bef684b7d82c/backuppc cargo run cat --host pc-ulrich -n 1214 --share /home phoenix/Downloads/mongodb-compass_1.40.4_amd64.deb
+    {
+      "name": "mount",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/backuppc_pool",
+      "args": [
+        "mount",
+        "/home/phoenix/tmp/test"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "BPC_TOPDIR": "/media/phoenix/aef7052b-b422-4b66-83a3-bef684b7d82c/backuppc"
+      }
+    },
+    {
+      "name": "ls",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/backuppc_pool",
+      "args": [
+        "ls",
+        "--host",
+        "server",
+        "--number",
+        "2685",
+        "--share",
+        "/volume1/photo",
+        "/Import/Note3_2/2019"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "BPC_TOPDIR": "/media/phoenix/aef7052b-b422-4b66-83a3-bef684b7d82c/backuppc"
+      }
+    },
+    {
+      "name": "cat",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/backuppc_pool",
+      "args": [
+        "cat",
+        "--host",
+        "server",
+        "--number",
+        "2387",
+        "--share",
+        "/volume1/homes",
+        "phoenix/backupOldSites/oui-mariage.net/clo-et-jb/app/cache/prod/annotations/Symfony-Component-Form-FormInterface#getAttribute.cache.php"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "BPC_TOPDIR": "/media/phoenix/aef7052b-b422-4b66-83a3-bef684b7d82c/backuppc"
+      }
+    }
+  ]
+}
