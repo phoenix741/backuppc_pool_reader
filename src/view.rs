@@ -131,10 +131,12 @@ impl BackupPC {
     }
 
     pub fn read_file(&self, path: &[&str]) -> Result<Box<dyn Read>> {
-        let filename = path.last().ok_or(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Failed to get filename: {}", path.join("/")),
-        ))?;
+        let filename = path.last().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to get filename: {}", path.join("/")),
+            )
+        })?;
         let path = &path[..path.len() - 1];
 
         let attributes = self.list(path)?;
@@ -142,10 +144,12 @@ impl BackupPC {
         let file = attributes
             .into_iter()
             .find(|f| f.name.eq(*filename))
-            .ok_or(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("File not found (not in attributs): {}", path.join("/")),
-            ))?;
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("File not found (not in attributs): {}", path.join("/")),
+                )
+            })?;
 
         if file.bpc_digest.len > 2 && file.bpc_digest.digest.ne(&EMPTY_MD5_DIGEST) {
             let md5_hash = file.bpc_digest.digest;

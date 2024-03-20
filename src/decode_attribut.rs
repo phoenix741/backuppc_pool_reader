@@ -66,10 +66,12 @@ pub trait VarintRead: Read {
 
             result |= val << shift;
             if byte & 0x80 == 0 {
-                return T::from_u64(result).ok_or(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Varint too large for the target type",
-                ));
+                return T::from_u64(result).ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Varint too large for the target type",
+                    )
+                });
             }
             shift += 7;
         }

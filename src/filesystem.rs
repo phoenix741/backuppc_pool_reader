@@ -327,10 +327,10 @@ impl BackupPCFS {
     }
 
     fn read_ino(&mut self, ino: u64, fh: u64, offset: i64, size: u32) -> Result<Vec<u8>> {
-        let opened_file = self.opened.get(&fh).ok_or(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "File not opened",
-        ))?;
+        let opened_file = self
+            .opened
+            .get(&fh)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "File not opened"))?;
 
         // If the offset is lesser than the current offset, we need to reset the reader
         if offset < opened_file.offset {
