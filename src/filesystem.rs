@@ -68,10 +68,10 @@ impl BackupPCFileAttribute {
                     BackupPCFileType::Socket => FileType::Socket,
                     _ => FileType::RegularFile,
                 },
-                perm: file.mode as u16,
-                nlink: file.nlinks as u32,
-                uid: file.uid as u32,
-                gid: file.gid as u32,
+                perm: file.mode,
+                nlink: file.nlinks,
+                uid: file.uid,
+                gid: file.gid,
                 rdev: 0,
                 flags: 0,
             },
@@ -343,14 +343,15 @@ impl BackupPCFS {
 
         let opened_file = self.opened.get_mut(&fh).unwrap();
 
-        // If the ofset is greater that the current offset, we need to fast forward (by reading data by 32k chunk )
+        // If the offset is greater that the current offset, we need to fast forward (by reading data by 32k chunk )
         if offset > opened_file.offset {
             let mut buffer = vec![0; 32 * 1024];
             let mut remaining = offset - opened_file.offset;
 
             while remaining > 0 {
                 let to_read = std::cmp::min(remaining, buffer.len() as i64);
-                let size = opened_file.reader.read(&mut buffer[..to_read as usize])?;
+                let to_read = usize::try_from(to_read)?;
+                let size: usize = opened_file.reader.read(&mut buffer[..to_read])?;
                 remaining -= size as i64;
             }
             opened_file.offset = offset;

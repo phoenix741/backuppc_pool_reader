@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::io::{self, Read};
 
 use byteorder::{BigEndian, ReadBytesExt};
+use num_traits::FromPrimitive;
 
 use crate::hosts::BackupInformation;
 
@@ -45,7 +46,7 @@ pub trait VarintRead: Read {
     ///
     /// Returns an `io::Error` if there was an error reading from the source or if the
     /// read integer is too large to fit in a `u64`.
-    fn read_varint(&mut self) -> io::Result<u64> {
+    fn read_varint<T: FromPrimitive>(&mut self) -> io::Result<T> {
         let mut result = 0;
         let mut shift = 0;
 
@@ -65,7 +66,10 @@ pub trait VarintRead: Read {
 
             result |= val << shift;
             if byte & 0x80 == 0 {
-                return Ok(result);
+                return T::from_u64(result).ok_or(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Varint too large for the target type",
+                ));
             }
             shift += 7;
         }
@@ -104,13 +108,13 @@ pub struct FileAttributes {
     pub compress: u64,
 
     /// File mode.
-    pub mode: u64,
+    pub mode: u16,
     /// User ID of the file owner.
-    pub uid: u64,
+    pub uid: u32,
     /// Group ID of the file owner.
-    pub gid: u64,
+    pub gid: u32,
     /// Number of hard links to the file.
-    pub nlinks: u64,
+    pub nlinks: u32,
 
     /// Modification time of the file.
     pub mtime: u64,
@@ -235,7 +239,7 @@ impl FileAttributes {
 /// This function assumes that the reader is properly initialized and that the data being read is valid.
 impl FileAttributes {
     pub fn read_from<R: Read + VarintRead>(reader: &mut R) -> io::Result<Self> {
-        let filename_len: usize = reader.read_varint()? as usize;
+        let filename_len: usize = reader.read_varint()?;
         let mut name = vec![0u8; filename_len];
         reader.read_exact(&mut name)?;
         let name = String::from_utf8(name).unwrap_or_default();
@@ -260,15 +264,15 @@ impl FileAttributes {
             }
         };
         let mtime: u64 = reader.read_varint().unwrap_or_default();
-        let mode: u64 = reader.read_varint().unwrap_or_default();
-        let uid: u64 = reader.read_varint().unwrap_or_default();
-        let gid: u64 = reader.read_varint().unwrap_or_default();
+        let mode: u16 = reader.read_varint().unwrap_or_default();
+        let uid: u32 = reader.read_varint().unwrap_or_default();
+        let gid: u32 = reader.read_varint().unwrap_or_default();
         let size: u64 = reader.read_varint().unwrap_or_default();
         let inode: u64 = reader.read_varint().unwrap_or_default();
         let compress: u64 = reader.read_varint().unwrap_or_default();
-        let nlinks: u64 = reader.read_varint().unwrap_or_default();
+        let nlinks: u32 = reader.read_varint().unwrap_or_default();
 
-        let digest_len: usize = reader.read_varint().unwrap_or_default() as usize;
+        let digest_len: usize = reader.read_varint().unwrap_or_default();
         let mut digest = vec![0u8; digest_len];
         if digest_len > 0 {
             reader.read_exact(&mut digest)?;
@@ -276,12 +280,12 @@ impl FileAttributes {
 
         let mut xattrs = Vec::new();
         for _ in 0..xattr_num_entries {
-            let key_len: usize = reader.read_varint().unwrap_or_default() as usize;
+            let key_len: usize = reader.read_varint().unwrap_or_default();
             let mut key = vec![0u8; key_len];
             reader.read_exact(&mut key)?;
             let key = String::from_utf8(key).unwrap_or_default();
 
-            let value_len: usize = reader.read_varint().unwrap_or_default() as usize;
+            let value_len: usize = reader.read_varint().unwrap_or_default();
             let mut value = vec![0u8; value_len];
             reader.read_exact(&mut value)?;
             let value = String::from_utf8(value).unwrap_or_default();

@@ -19,14 +19,6 @@ use std::{
 ///
 /// Backups are store in the file topdir/pc/<hostname>/backups file.
 ///
-/// The format of the file is:
-///
-/// ```
-/// 426	full	1604239201	1604241911	665501	72866874811	44	34354170	743	1070180426	0	0	0	0	3	8048674	371719499	0		1	rsync	0		4.3.1	6294447
-/// 580	full	1620331204	1620334253	811290	86633179629	25	495098	6462	3418606195	84	0	0	84	3	170600	1023436472	0		1	rsync	0		4.3.1	7805525
-/// 690	full	1637431201	1637434334	1122037	138535180296	2	162	733	1749237789	0	0	0	0	3	163	440773632	0		1	rsync	0		4.3.1	9684473
-/// ```
-///
 /// The fields are (num type startTime endTime nFiles size nFilesExist sizeExist nFilesNew sizeNew xferErrs xferBadFile xferBadShare tarErrs compress sizeExistComp sizeNewComp noFill fillFromNum mangle xferMethod level charset version inodeLast):
 /// - backup number
 /// - type of backup (full, incr, etc)

@@ -135,7 +135,10 @@ impl SearchTrait for Search {
         match Search::list_file_from_dir(topdir, hostname, backup_number, share, &path) {
             Ok(attributes) => Ok(attributes
                 .into_iter()
-                .filter(|attr| attr.name.cmp(&(filename.to_string())) == Ordering::Equal)
+                .filter(|attr| {
+                    let filename = (*filename).to_string();
+                    attr.name.cmp(&filename) == Ordering::Equal
+                })
                 .collect()),
             Err(e) => Err(e),
         }
