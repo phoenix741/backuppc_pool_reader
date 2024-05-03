@@ -49,7 +49,7 @@ use crate::util;
 /// ```
 pub fn find_file_in_backuppc(
     topdir: &str,
-    file_hash: &Vec<u8>,
+    file_hash: &[u8],
     collid: Option<u64>,
 ) -> Result<(String, bool), String> {
     if file_hash.len() < 2 {

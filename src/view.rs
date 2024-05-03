@@ -220,7 +220,7 @@ mod tests {
     // └── pc-3
     fn create_mock_backup(num: u32) -> BackupInformation {
         BackupInformation {
-            num: num,
+            num,
             backup_type: "full".to_string(),
             start_time: 0,
             end_time: 0,
@@ -251,7 +251,7 @@ mod tests {
     fn create_file_attributes(name: &str, type_: FileType) -> FileAttributes {
         FileAttributes {
             name: name.to_string(),
-            type_: type_,
+            type_,
             compress: 0,
 
             mode: 0,
@@ -288,31 +288,31 @@ mod tests {
         let topdir = "/var/lib/backuppc";
         let view = BackupPC::new(topdir);
 
-        let mut hosts = Vec::new();
-        hosts.push("pc-1".to_string());
-        hosts.push("pc-2".to_string());
-        hosts.push("pc-3".to_string());
+        let hosts = vec!["pc-1".to_string(), "pc-2".to_string(), "pc-3".to_string()];
 
-        let mut backups_pc1 = Vec::<BackupInformation>::new();
+        let mut backups_pc1 = vec![create_mock_backup(1), create_mock_backup(2)];
         backups_pc1.push(create_mock_backup(1));
         backups_pc1.push(create_mock_backup(2));
 
-        let mut backups_pc2 = Vec::<BackupInformation>::new();
-        backups_pc2.push(create_mock_backup(1));
-        backups_pc2.push(create_mock_backup(2));
-        backups_pc2.push(create_mock_backup(3));
+        let backups_pc2 = vec![
+            create_mock_backup(1),
+            create_mock_backup(2),
+            create_mock_backup(3),
+        ];
 
         let backups_pc3 = Vec::<BackupInformation>::new();
 
-        let mut shares_pc1_backup1 = Vec::new();
-        shares_pc1_backup1.push("/home".to_string());
-        shares_pc1_backup1.push("/volume1/test".to_string());
-        shares_pc1_backup1.push("/volume1/test2".to_string());
+        let shares_pc1_backup1 = vec![
+            "/home".to_string(),
+            "/volume1/test".to_string(),
+            "/volume1/test2".to_string(),
+        ];
 
-        let mut shares_pc1_backup2 = Vec::new();
-        shares_pc1_backup2.push("/volume1/test".to_string());
-        shares_pc1_backup2.push("/volume1/test2".to_string());
-        shares_pc1_backup2.push("/volume2".to_string());
+        let shares_pc1_backup2 = vec![
+            "/volume1/test".to_string(),
+            "/volume1/test2".to_string(),
+            "/volume2".to_string(),
+        ];
 
         let list_hosts_ctx = MockHostsTrait::list_hosts_context();
         list_hosts_ctx
@@ -438,7 +438,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&[]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         assert_eq!(result.len(), 3);
@@ -453,7 +453,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&["pc-1"]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         assert_eq!(result.len(), 2);
@@ -467,7 +467,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&["pc-1", "1"]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         println!("{:?}", result);
@@ -482,7 +482,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&["pc-1", "1", "volume1"]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         println!("{:?}", result);
@@ -497,7 +497,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&["pc-1", "1", "volume1", "test"]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         println!("{:?}", result);
@@ -515,7 +515,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest"]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         println!("{:?}", result);
@@ -530,7 +530,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de"]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         println!("{:?}", result);
@@ -547,7 +547,7 @@ mod tests {
         let view = mocks.0;
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de", "test"]);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         let result = result.unwrap();
         println!("{:?}", result);
