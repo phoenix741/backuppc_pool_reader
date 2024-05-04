@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use log::debug;
+
 use crate::util;
 
 /// Finds a file in the `BackupPC` pool directory based on its file hash.
@@ -81,12 +83,15 @@ pub fn find_file_in_backuppc(
         .join(&file_hash);
 
     if pool_path.exists() {
+        debug!("Found file in pool: {:?}", pool_path);
         let path = pool_path.to_str().ok_or("pool path not exists")?;
         Ok((path.to_string(), false))
     } else if cpool_path.exists() {
+        debug!("Found file in cpool: {:?}", cpool_path);
         let path = cpool_path.to_str().ok_or("cpool path not exists")?;
         Ok((path.to_string(), true))
     } else {
+        debug!("File {file_hash} does not exist");
         Err(format!("File {file_hash} does not exist"))
     }
 }

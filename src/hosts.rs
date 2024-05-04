@@ -1,3 +1,4 @@
+use log::{debug, info};
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 
@@ -88,6 +89,7 @@ pub struct Hosts;
 
 impl HostsTrait for Hosts {
     fn list_hosts(topdir: &str) -> Result<Vec<String>> {
+        info!("Listing hosts in {topdir}");
         let pc_dir = std::path::Path::new(topdir).join("pc");
         let mut hosts = Vec::new();
 
@@ -112,6 +114,8 @@ impl HostsTrait for Hosts {
             }
         }
 
+        debug!("Found {} hosts", hosts.len());
+
         Ok(hosts)
     }
 
@@ -121,6 +125,8 @@ impl HostsTrait for Hosts {
     /// The backups are stored in the file topdir/pc/<hostname>/backups.
     ///
     fn list_backups(topdir: &str, hostname: &str) -> Result<Vec<BackupInformation>> {
+        info!("Listing backups for {hostname}");
+
         let mut backups = Vec::new();
         let path = format!("{topdir}/pc/{hostname}/backups");
 
@@ -164,10 +170,14 @@ impl HostsTrait for Hosts {
             backups.push(backup);
         }
 
+        debug!("Found {} backups", backups.len());
+
         Ok(backups)
     }
 
     fn list_shares(topdir: &str, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
+        info!("Listing shares for {hostname} {backup_number}");
+
         let pc_dir = std::path::Path::new(topdir).join("pc");
         let host_dir = pc_dir.join(hostname);
         let share_dir = host_dir.join(format!("{backup_number}"));
@@ -198,6 +208,8 @@ impl HostsTrait for Hosts {
                 }
             }
         }
+
+        debug!("Found {} shares", shares.len());
 
         Ok(shares)
     }

@@ -1,3 +1,4 @@
+use log::{debug, error};
 use lru::LruCache;
 use std::hash::Hasher;
 use std::io::Read;
@@ -158,6 +159,7 @@ impl BackupPCFS {
                 if file.type_ == BackupPCFileType::Unknown
                     || file.type_ == BackupPCFileType::Deleted
                 {
+                    error!("Unknown or deleted file: {:?}", file);
                     return None;
                 }
 
@@ -210,7 +212,8 @@ impl BackupPCFS {
             return Ok(cached_result.clone());
         }
 
-        let result = self.list_attributes(ino)?;
+        let mut result = self.list_attributes(ino)?;
+        result.sort_by(|a, b| a.name.cmp(&b.name));
         self.cache.put(ino, result.clone());
 
         Ok(result)
@@ -238,11 +241,16 @@ impl BackupPCFS {
         attribute.map(|attr| (duration, attr.attr))
     }
 
-    fn fill_reply_from_files(&mut self, reply: &mut ReplyDirectory, ino: u64) -> Result<()> {
+    fn fill_reply_from_files(
+        &mut self,
+        reply: &mut ReplyDirectory,
+        ino: u64,
+        offset: i64,
+    ) -> Result<()> {
         let elements = self.list_attributes_with_cache(ino)?;
 
         // Add the "." and ".." entries
-        if ino != 1 {
+        if ino != 1 && offset == 0 {
             let element = self.inodes.get(&ino);
             if let Some(parent) = element {
                 let _ = reply.add(ino, 1, FileType::Directory, ".");
@@ -250,13 +258,26 @@ impl BackupPCFS {
             }
         }
 
-        for (offset, cache_element) in elements.iter().enumerate() {
-            let _ = reply.add(
-                ino,
-                (offset + 1) as i64,
+        let offset = usize::try_from(offset)?;
+        for (current_offset, cache_element) in elements.iter().enumerate() {
+            let current_offset = current_offset + 2;
+            if current_offset <= offset {
+                continue;
+            }
+
+            debug!(
+                "Adding entry {} to ino {}, offset: {}, kind: {:?}",
+                cache_element.name, cache_element.attr.ino, current_offset, cache_element.attr.kind,
+            );
+            let result = reply.add(
+                cache_element.attr.ino,
+                current_offset as i64,
                 cache_element.attr.kind,
                 &cache_element.name,
             );
+            if result {
+                break;
+            }
         }
         Ok(())
     }
@@ -306,6 +327,14 @@ impl BackupPCFS {
                 Err(err)
             }
         }
+    }
+
+    fn read_link(&mut self, ino: u64) -> Result<Vec<u8>> {
+        let mut reader = self.create_reader(ino)?;
+        let mut buf = Vec::<u8>::new();
+        reader.read_to_end(&mut buf)?;
+
+        Ok(buf)
     }
 
     fn open(&mut self, ino: u64) -> Result<u64> {
@@ -374,6 +403,8 @@ impl BackupPCFS {
 impl Filesystem for BackupPCFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let attr = self.get_file_attr(parent, name);
+        debug!("Lookup parent: {parent}, name: {name:?}, attr: {attr:?}");
+
         match attr {
             Some((ttl, attr)) => reply.entry(&ttl, &attr, 0),
             None => reply.error(ENOENT),
@@ -381,9 +412,25 @@ impl Filesystem for BackupPCFS {
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
-        match self.get_attr(ino) {
+        let attr = self.get_attr(ino);
+        debug!("Getattr ino: {ino}, attr: {attr:?}");
+
+        match attr {
             Some((ttl, attr)) => reply.attr(&ttl, &attr),
             None => reply.error(ENOENT),
+        }
+    }
+
+    fn readlink(&mut self, _req: &Request<'_>, ino: u64, reply: ReplyData) {
+        let link_to = self.read_link(ino);
+        debug!("Readlink ino: {ino}, attr: {link_to:?}");
+
+        match link_to {
+            Ok(data) => reply.data(&data),
+            Err(err) => {
+                eprintln!("Error reading link ino {ino}: {err}");
+                reply.error(ENOENT);
+            }
         }
     }
 
@@ -439,19 +486,16 @@ impl Filesystem for BackupPCFS {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        if offset == 0 {
-            // List host and add it to the cache
-            match self.fill_reply_from_files(&mut reply, ino) {
-                Ok(()) => {
-                    reply.ok();
-                }
-                Err(e) => {
-                    eprintln!("Error reading dir {ino}: {e}");
-                    reply.error(ENOENT);
-                }
+        debug!("Readdir ino: {ino}, offset: {offset}");
+        // List host and add it to the cache
+        match self.fill_reply_from_files(&mut reply, ino, offset) {
+            Ok(()) => {
+                reply.ok();
             }
-        } else {
-            reply.ok();
+            Err(e) => {
+                eprintln!("Error reading dir {ino}: {e}");
+                reply.error(ENOENT);
+            }
         }
     }
 }

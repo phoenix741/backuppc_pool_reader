@@ -1,3 +1,4 @@
+use log::info;
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 
@@ -55,6 +56,8 @@ impl Search {
 
 impl SearchTrait for Search {
     fn read_attrib(file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>> {
+        info!("Reading attributes from file: {file} {is_compressed}");
+
         let input_file = File::open(file)?;
         if is_compressed {
             let mut reader = BackupPCReader::new(input_file);
@@ -81,6 +84,7 @@ impl SearchTrait for Search {
             mangle_filename(share),
             mangle(filename)
         );
+        info!("Looking for attributes in {backup_dir}");
 
         let file = Search::search_attrib_file(&backup_dir);
 
@@ -123,6 +127,8 @@ impl SearchTrait for Search {
         share: &str,
         filename: &str,
     ) -> Result<Vec<FileAttributes>> {
+        info!("Looking for file {filename} in {topdir}/pc/{hostname}/{backup_number}/{share}");
+
         let backup_dir_parts = filename.split('/').collect::<Vec<&str>>();
         let filename = backup_dir_parts.last().ok_or_else(|| {
             std::io::Error::new(

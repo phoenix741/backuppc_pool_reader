@@ -1,3 +1,5 @@
+use log::info;
+use std::collections::HashMap;
 use std::fs::File;
 /// In this application we have
 /// - the host list
@@ -14,7 +16,7 @@ use std::fs::File;
 use std::io::Read;
 
 use crate::compress::BackupPCReader;
-use crate::decode_attribut::FileAttributes;
+use crate::decode_attribut::{FileAttributes, FileType};
 
 #[cfg(not(test))]
 use crate::attribute_file::{Search, SearchTrait};
@@ -50,12 +52,60 @@ impl BackupPC {
         }
     }
 
+    fn list_file_from_dir(
+        &self,
+        hostname: &str,
+        backup_number: u32,
+        share: &str,
+        filename: &str,
+    ) -> Result<Vec<FileAttributes>> {
+        info!("List file from dir: {hostname}/{backup_number}/{share}/{filename}",);
+        // First search the next oldest filled backup next to the current backup
+        let backups = Hosts::list_backups(&self.topdir, hostname).unwrap_or_else(|_| Vec::new());
+        let backups = backups.iter().filter(|backup| backup.num >= backup_number);
+        let mut backups_to_search: Vec<&crate::hosts::BackupInformation> = Vec::new();
+
+        for backup in backups {
+            backups_to_search.push(backup);
+
+            if backup.no_fill > 0 {
+                continue;
+            }
+            break;
+        }
+        backups_to_search.reverse();
+
+        // Next search the file from the oldest filled backup to the current backup
+        let mut files: HashMap<String, FileAttributes> = HashMap::new();
+        for backup in backups_to_search {
+            info!("Search in backup: {backup}", backup = backup.num);
+
+            let files_from_backup =
+                Search::list_file_from_dir(&self.topdir, hostname, backup.num, share, filename)?;
+
+            // TODO: Missing management of hard link ?
+            for file in files_from_backup {
+                if file.type_ == FileType::Deleted {
+                    files.remove(&file.name);
+                } else {
+                    files.insert(file.name.clone(), file);
+                }
+            }
+        }
+
+        Ok(files.values().cloned().collect())
+    }
+
     fn list_shares_of(
         &self,
         hostname: &str,
         backup_number: u32,
         path: &[&str],
     ) -> Result<(Vec<String>, Option<String>, usize)> {
+        info!(
+            "List shares of: {hostname}/{backup_number}/{path}",
+            path = path.join("/")
+        );
         let shares = Hosts::list_shares(&self.topdir, hostname, backup_number)?;
 
         let mut selected_share: Option<String> = None;
@@ -84,6 +134,7 @@ impl BackupPC {
     }
 
     pub fn list(&self, path: &[&str]) -> Result<Vec<FileAttributes>> {
+        info!("List: {path}", path = path.join("/"));
         match path.len() {
             0 => {
                 let hosts = Hosts::list_hosts(&self.topdir)?;
@@ -118,8 +169,7 @@ impl BackupPC {
 
                 match selected_share {
                     None => Ok(shares),
-                    Some(selected_share) => Search::list_file_from_dir(
-                        &self.topdir,
+                    Some(selected_share) => self.list_file_from_dir(
                         path[0],
                         path[1].parse::<u32>().unwrap_or(0),
                         &selected_share,
@@ -131,6 +181,7 @@ impl BackupPC {
     }
 
     pub fn read_file(&self, path: &[&str]) -> Result<Box<dyn Read>> {
+        info!("Read file: {path}", path = path.join("/"));
         let filename = path.last().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::Other,

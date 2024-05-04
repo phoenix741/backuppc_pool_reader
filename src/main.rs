@@ -154,6 +154,8 @@ fn read_file_to_stdout(
 }
 
 fn main() {
+    env_logger::init();
+
     let args = Cli::parse();
 
     let topdir = match env::var("BPC_TOPDIR") {
