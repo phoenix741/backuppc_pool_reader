@@ -175,6 +175,11 @@ impl HostsTrait for Hosts {
         Ok(backups)
     }
 
+    ///
+    /// List all the shares for a given host and backup number.
+    ///
+    /// The shares are stored in the directory topdir/pc/<hostname>/<backup_number>.
+    ///
     fn list_shares(topdir: &str, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
         info!("Listing shares for {hostname} {backup_number}");
 
