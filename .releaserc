@@ -8,19 +8,39 @@
     "@semantic-release/changelog",
     "@semantic-release/npm",
     [
-      "@semantic-release-cargo/semantic-release-cargo",
+      "semantic-release-cargo",
       {
-        "registry": "gitea"
+        "publishArgs": [
+          "--registry",
+          "gitea"
+        ]
       }
     ],
+    "semantic-release-cargo",
     [
       "@saithodev/semantic-release-gitea",
       {
         "assets": [
           {
-            "path": "./target/release/backuppc_pool",
-            "label": "backuppc_pool"
+            "path": "./dist/backuppc_pool_reader-x86_64-unknown-linux-gnu",
+            "label": "backuppc_pool_reader-x86_64-unknown-linux-gnu"
+          },
+          {
+            "path": "./dist/backuppc_pool_reader-x86_64-unknown-linux-gnu-SHA256SUM.txt",
+            "label": "backuppc_pool_reader-x86_64-unknown-linux-gnu-SHA256SUM.txt"
           }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": [
+          "CHANGELOG.md",
+          "package.json",
+          "package-lock.json",
+          "Cargo.toml",
+          "Cargo.lock"
         ]
       }
     ]

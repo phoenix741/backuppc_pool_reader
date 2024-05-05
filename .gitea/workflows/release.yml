@@ -28,9 +28,23 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Binary
+        run: cargo build --release
+
+      - name: Create release archive
+        run: |
+          mkdir dist
+          cp target/release/backuppc_pool_reader dist/backuppc_pool_reader-x86_64-unknown-linux-gnu
+
+      - name: Create binary checksum
+        run: shasum --algorithm 256 --binary backuppc_pool_reader-x86_64-unknown-linux-gnu | tee backuppc_pool_reader-x86_64-unknown-linux-gnu-SHA256SUM.txt
+        working-directory: ./dist
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
