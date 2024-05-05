@@ -211,12 +211,13 @@ impl FileAttributes {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use std::io;
+/// use std::fs::File;
 /// use std::io::Read;
-/// use backuppc_pool::decode_attribut::FileAttributes;
+/// use backuppc_pool_reader::decode_attribut::FileAttributes;
 ///
-/// let mut reader: Vec<u8> = vec![/* ... */];
+/// let mut reader = File::open("test").unwrap();
 /// let result = FileAttributes::read_from(&mut reader);
 /// match result {
 ///     Ok(attributes) => {
@@ -333,10 +334,10 @@ pub struct AttributeFile {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use std::io::Cursor;
 /// use byteorder::{BigEndian, ReadBytesExt};
-/// use backuppc_pool::decode_attribut::AttributeFile;
+/// use backuppc_pool_reader::decode_attribut::AttributeFile;
 ///
 /// let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
 /// let mut reader = Cursor::new(data);

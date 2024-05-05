@@ -17,7 +17,9 @@ use fuser::{
 use libc::ENOENT;
 use std::{collections::HashMap, ffi::OsStr};
 
+use crate::attribute_file::Search;
 use crate::decode_attribut::{FileAttributes, FileType as BackupPCFileType};
+use crate::hosts::Hosts;
 use crate::util::Result;
 use crate::view::BackupPC;
 
@@ -112,9 +114,12 @@ pub struct BackupPCFS {
 
 impl BackupPCFS {
     pub fn new(topdir: &str) -> Self {
+        let hosts = Box::new(Hosts::new(topdir));
+        let search = Box::new(Search::new(topdir));
+
         BackupPCFS {
             inodes: HashMap::new(),
-            view: BackupPC::new(topdir),
+            view: BackupPC::new(topdir, hosts, search),
             cache: LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap()),
             opened: HashMap::new(),
         }

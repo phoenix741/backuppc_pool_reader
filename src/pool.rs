@@ -31,7 +31,7 @@ use crate::util;
 /// # Examples
 ///
 /// ```
-/// use crate::pool::find_file_in_backuppc;
+/// use backuppc_pool_reader::pool::find_file_in_backuppc;
 ///
 /// let topdir = "/home/user/backuppc";
 /// let file_hash = vec![0x12, 0x34, 0x56, 0x78];

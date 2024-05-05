@@ -13,16 +13,16 @@ use crate::{
 
 #[cfg_attr(test, automock)]
 pub trait SearchTrait {
-    fn read_attrib(file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>>;
+    fn read_attrib(&self, file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>>;
     fn list_file_from_dir(
-        topdir: &str,
+        &self,
         hostname: &str,
         backup_number: u32,
         share: &str,
         filename: &str,
     ) -> Result<Vec<FileAttributes>>;
     fn get_file(
-        topdir: &str,
+        &self,
         hostname: &str,
         backup_number: u32,
         share: &str,
@@ -30,10 +30,18 @@ pub trait SearchTrait {
     ) -> Result<Vec<FileAttributes>>;
 }
 
-pub struct Search;
+pub struct Search {
+    topdir: String,
+}
 
 impl Search {
-    fn search_attrib_file(backup_dir: &str) -> Option<(String, std::path::PathBuf)> {
+    pub fn new(topdir: &str) -> Self {
+        Search {
+            topdir: topdir.to_string(),
+        }
+    }
+
+    fn search_attrib_file(&self, backup_dir: &str) -> Option<(String, std::path::PathBuf)> {
         // Search for a file starting with the filename "attrib_" in the directory
         let file = std::fs::read_dir(backup_dir)
             .ok()?
@@ -55,7 +63,7 @@ impl Search {
 }
 
 impl SearchTrait for Search {
-    fn read_attrib(file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>> {
+    fn read_attrib(&self, file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>> {
         info!("Reading attributes from file: {file} {is_compressed}");
 
         let input_file = File::open(file)?;
@@ -73,20 +81,21 @@ impl SearchTrait for Search {
     }
 
     fn list_file_from_dir(
-        topdir: &str,
+        &self,
         hostname: &str,
         backup_number: u32,
         share: &str,
         filename: &str,
     ) -> Result<Vec<FileAttributes>> {
         let backup_dir = format!(
-            "{topdir}/pc/{hostname}/{backup_number}/{}/{}",
+            "{}/pc/{hostname}/{backup_number}/{}/{}",
+            self.topdir,
             mangle_filename(share),
             mangle(filename)
         );
         info!("Looking for attributes in {backup_dir}");
 
-        let file = Search::search_attrib_file(&backup_dir);
+        let file = self.search_attrib_file(&backup_dir);
 
         if let Some((_, file)) = file {
             // Get the hash at the right of the _ symbole
@@ -104,9 +113,9 @@ impl SearchTrait for Search {
 
             let md5_hash: Vec<u8> = hex_string_to_vec(file);
 
-            match find_file_in_backuppc(topdir, &md5_hash, None) {
+            match find_file_in_backuppc(&self.topdir, &md5_hash, None) {
                 Ok((file_path, is_compressed)) => {
-                    let attributes = Search::read_attrib(&file_path, is_compressed)?;
+                    let attributes = self.read_attrib(&file_path, is_compressed)?;
                     return Ok(attributes);
                 }
                 Err(message) => {
@@ -121,13 +130,16 @@ impl SearchTrait for Search {
     }
 
     fn get_file(
-        topdir: &str,
+        &self,
         hostname: &str,
         backup_number: u32,
         share: &str,
         filename: &str,
     ) -> Result<Vec<FileAttributes>> {
-        info!("Looking for file {filename} in {topdir}/pc/{hostname}/{backup_number}/{share}");
+        info!(
+            "Looking for file {filename} in {}/pc/{hostname}/{backup_number}/{share}",
+            self.topdir
+        );
 
         let backup_dir_parts = filename.split('/').collect::<Vec<&str>>();
         let filename = backup_dir_parts.last().ok_or_else(|| {
@@ -138,7 +150,7 @@ impl SearchTrait for Search {
         })?;
         let path = backup_dir_parts[..backup_dir_parts.len() - 1].join("/");
 
-        match Search::list_file_from_dir(topdir, hostname, backup_number, share, &path) {
+        match self.list_file_from_dir(hostname, backup_number, share, &path) {
             Ok(attributes) => Ok(attributes
                 .into_iter()
                 .filter(|attr| {

@@ -78,19 +78,28 @@ pub struct BackupInformation {
 
 #[cfg_attr(test, automock)]
 pub trait HostsTrait {
-    fn list_hosts(topdir: &str) -> Result<Vec<String>>;
-    fn list_backups(topdir: &str, hostname: &str) -> Result<Vec<BackupInformation>>;
-    fn list_shares(topdir: &str, hostname: &str, backup_number: u32) -> Result<Vec<String>>;
+    fn list_hosts(&self) -> Result<Vec<String>>;
+    fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>>;
+    fn list_shares(&self, hostname: &str, backup_number: u32) -> Result<Vec<String>>;
+}
+
+pub struct Hosts {
+    topdir: String,
+}
+
+impl Hosts {
+    pub fn new(topdir: &str) -> Self {
+        Hosts {
+            topdir: topdir.to_string(),
+        }
+    }
 }
 
 // Implements trait
-
-pub struct Hosts;
-
 impl HostsTrait for Hosts {
-    fn list_hosts(topdir: &str) -> Result<Vec<String>> {
-        info!("Listing hosts in {topdir}");
-        let pc_dir = std::path::Path::new(topdir).join("pc");
+    fn list_hosts(&self) -> Result<Vec<String>> {
+        info!("Listing hosts in {}", self.topdir);
+        let pc_dir = std::path::Path::new(&self.topdir).join("pc");
         let mut hosts = Vec::new();
 
         for entry in std::fs::read_dir(pc_dir)? {
@@ -124,11 +133,11 @@ impl HostsTrait for Hosts {
     ///
     /// The backups are stored in the file topdir/pc/<hostname>/backups.
     ///
-    fn list_backups(topdir: &str, hostname: &str) -> Result<Vec<BackupInformation>> {
+    fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>> {
         info!("Listing backups for {hostname}");
 
         let mut backups = Vec::new();
-        let path = format!("{topdir}/pc/{hostname}/backups");
+        let path = format!("{}/pc/{hostname}/backups", &self.topdir);
 
         // Open the file and read each line
         // Fields are separated by tab
@@ -180,10 +189,10 @@ impl HostsTrait for Hosts {
     ///
     /// The shares are stored in the directory topdir/pc/<hostname>/<backup_number>.
     ///
-    fn list_shares(topdir: &str, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
+    fn list_shares(&self, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
         info!("Listing shares for {hostname} {backup_number}");
 
-        let pc_dir = std::path::Path::new(topdir).join("pc");
+        let pc_dir = std::path::Path::new(&self.topdir).join("pc");
         let host_dir = pc_dir.join(hostname);
         let share_dir = host_dir.join(format!("{backup_number}"));
 

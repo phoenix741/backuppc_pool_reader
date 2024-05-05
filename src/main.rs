@@ -142,6 +142,7 @@ fn print_ls(mut attrs: Vec<FileAttributes>) {
 }
 
 fn read_file_to_stdout(
+    search: &dyn SearchTrait,
     topdir: &str,
     hostname: Option<String>,
     number: Option<u32>,
@@ -160,7 +161,9 @@ fn read_file_to_stdout(
             return Err("No share specified".to_string());
         };
 
-        let attrs = Search::get_file(topdir, &hostname, backup_number, &share, file).unwrap();
+        let attrs = search
+            .get_file(&hostname, backup_number, &share, file)
+            .unwrap();
         if attrs.len() == 1 && attrs[0].bpc_digest.len > 0 {
             let hex = vec_to_hex_string(&attrs[0].bpc_digest.digest);
             pool_file_to_stdout(topdir, &hex)?;
@@ -189,6 +192,8 @@ fn main() {
         Ok(value) => value,
         Err(_) => "/var/lib/backuppc".to_string(),
     };
+    let search = Search::new(&topdir);
+    let hosts = Hosts::new(&topdir);
 
     match subcommand {
         Commands::Cat {
@@ -197,7 +202,7 @@ fn main() {
             number,
             share,
         } => {
-            read_file_to_stdout(&topdir, host, number, share, &path).unwrap();
+            read_file_to_stdout(&search, &topdir, host, number, share, &path).unwrap();
         }
         Commands::Ls {
             host,
@@ -205,11 +210,13 @@ fn main() {
             share,
             path,
         } => {
-            let attrs = Search::list_file_from_dir(&topdir, &host, number, &share, &path).unwrap();
+            let attrs = search
+                .list_file_from_dir(&host, number, &share, &path)
+                .unwrap();
             print_ls(attrs);
         }
         Commands::Hosts {} => {
-            let hosts = Hosts::list_hosts(&topdir);
+            let hosts = hosts.list_hosts();
             match hosts {
                 Ok(hosts) => {
                     for host in hosts {
@@ -222,7 +229,7 @@ fn main() {
             }
         }
         Commands::Backups { host } => {
-            let backups = Hosts::list_backups(&topdir, &host);
+            let backups = hosts.list_backups(&host);
             match backups {
                 Ok(backups) => {
                     for backup in backups {

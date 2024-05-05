@@ -19,14 +19,14 @@ use crate::compress::BackupPCReader;
 use crate::decode_attribut::{FileAttributes, FileType};
 
 #[cfg(not(test))]
-use crate::attribute_file::{Search, SearchTrait};
+use crate::attribute_file::SearchTrait;
 #[cfg(not(test))]
-use crate::hosts::{Hosts, HostsTrait};
+use crate::hosts::HostsTrait;
 
 #[cfg(test)]
-use crate::attribute_file::{MockSearchTrait as Search, SearchTrait};
+use crate::attribute_file::SearchTrait;
 #[cfg(test)]
-use crate::hosts::{HostsTrait, MockHostsTrait as Hosts};
+use crate::hosts::HostsTrait;
 use crate::pool::find_file_in_backuppc;
 use crate::util::{unique, Result};
 
@@ -37,6 +37,8 @@ const EMPTY_MD5_DIGEST: [u8; 16] = [
 
 pub struct BackupPC {
     topdir: String,
+    hosts: Box<dyn HostsTrait>,
+    search: Box<dyn SearchTrait>,
 }
 
 fn sanitize_path(path: &str) -> Vec<&str> {
@@ -46,9 +48,11 @@ fn sanitize_path(path: &str) -> Vec<&str> {
 }
 
 impl BackupPC {
-    pub fn new(topdir: &str) -> Self {
+    pub fn new(topdir: &str, hosts: Box<dyn HostsTrait>, search: Box<dyn SearchTrait>) -> Self {
         BackupPC {
             topdir: topdir.to_string(),
+            hosts,
+            search,
         }
     }
 
@@ -61,7 +65,10 @@ impl BackupPC {
     ) -> Result<Vec<FileAttributes>> {
         info!("List file from dir: {hostname}/{backup_number}/{share}/{filename}",);
         // First search the next oldest filled backup next to the current backup
-        let backups = Hosts::list_backups(&self.topdir, hostname).unwrap_or_else(|_| Vec::new());
+        let backups = self
+            .hosts
+            .list_backups(hostname)
+            .unwrap_or_else(|_| Vec::new());
         let backups = backups.iter().filter(|backup| backup.num >= backup_number);
         let mut backups_to_search: Vec<&crate::hosts::BackupInformation> = Vec::new();
 
@@ -80,8 +87,9 @@ impl BackupPC {
         for backup in backups_to_search {
             info!("Search in backup: {backup}", backup = backup.num);
 
-            let files_from_backup =
-                Search::list_file_from_dir(&self.topdir, hostname, backup.num, share, filename)?;
+            let files_from_backup = self
+                .search
+                .list_file_from_dir(hostname, backup.num, share, filename)?;
 
             // TODO: Missing management of hard link ?
             for file in files_from_backup {
@@ -106,7 +114,7 @@ impl BackupPC {
             "List shares of: {hostname}/{backup_number}/{path}",
             path = path.join("/")
         );
-        let shares = Hosts::list_shares(&self.topdir, hostname, backup_number)?;
+        let shares = self.hosts.list_shares(hostname, backup_number)?;
 
         let mut selected_share: Option<String> = None;
         let mut share_size = 0;
@@ -137,11 +145,11 @@ impl BackupPC {
         info!("List: {path}", path = path.join("/"));
         match path.len() {
             0 => {
-                let hosts = Hosts::list_hosts(&self.topdir)?;
+                let hosts = self.hosts.list_hosts()?;
                 Ok(hosts.into_iter().map(FileAttributes::from_host).collect())
             }
             1 => {
-                let backups = Hosts::list_backups(&self.topdir, path[0]);
+                let backups = self.hosts.list_backups(path[0]);
                 match backups {
                     Ok(backups) => Ok(backups
                         .into_iter()
@@ -323,27 +331,14 @@ mod tests {
         }
     }
 
-    fn create_view() -> (
-        BackupPC,
-        crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_hosts::Context,
-        crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_backups::Context,
-        crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_backups::Context,
-        crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_backups::Context,
-        crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_shares::Context,
-        crate::hosts::__mock_MockHostsTrait_HostsTrait::__list_shares::Context,
-        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
-        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
-        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
-        crate::attribute_file::__mock_MockSearchTrait_SearchTrait::__list_file_from_dir::Context,
-    ) {
+    fn create_view() -> BackupPC {
         let topdir = "/var/lib/backuppc";
-        let view = BackupPC::new(topdir);
+        let mut hosts_mock = Box::new(MockHostsTrait::new());
+        let mut search_mock = Box::new(MockSearchTrait::new());
 
         let hosts = vec!["pc-1".to_string(), "pc-2".to_string(), "pc-3".to_string()];
 
-        let mut backups_pc1 = vec![create_mock_backup(1), create_mock_backup(2)];
-        backups_pc1.push(create_mock_backup(1));
-        backups_pc1.push(create_mock_backup(2));
+        let backups_pc1 = vec![create_mock_backup(1), create_mock_backup(2)];
 
         let backups_pc2 = vec![
             create_mock_backup(1),
@@ -365,82 +360,59 @@ mod tests {
             "/volume2".to_string(),
         ];
 
-        let list_hosts_ctx = MockHostsTrait::list_hosts_context();
-        list_hosts_ctx
-            .expect()
-            .returning(move |_| Ok(hosts.clone()));
+        hosts_mock
+            .expect_list_hosts()
+            .returning(move || Ok(hosts.clone()));
 
-        let list_backups_pc1_ctx = MockHostsTrait::list_backups_context();
-        list_backups_pc1_ctx
-            .expect()
-            .with(eq(topdir), eq("pc-1"))
-            .returning(move |_, _| Ok(backups_pc1.clone()));
+        hosts_mock
+            .expect_list_backups()
+            .with(eq("pc-1"))
+            .returning(move |_| Ok(backups_pc1.clone()));
 
-        let list_backups_pc2_ctx = MockHostsTrait::list_backups_context();
-        list_backups_pc2_ctx
-            .expect()
-            .with(eq(topdir), eq("pc-2"))
-            .returning(move |_, _| Ok(backups_pc2.clone()));
+        hosts_mock
+            .expect_list_backups()
+            .with(eq("pc-2"))
+            .returning(move |_| Ok(backups_pc2.clone()));
 
-        let list_backups_pc3_ctx = MockHostsTrait::list_backups_context();
-        list_backups_pc3_ctx
-            .expect()
-            .with(eq(topdir), eq("pc-3"))
-            .returning(move |_, _| Ok(backups_pc3.clone()));
+        hosts_mock
+            .expect_list_backups()
+            .with(eq("pc-3"))
+            .returning(move |_| Ok(backups_pc3.clone()));
 
-        let list_shares_pc1_backup1_ctx = MockHostsTrait::list_shares_context();
-        list_shares_pc1_backup1_ctx
-            .expect()
-            .with(eq(topdir), eq("pc-1"), eq(1))
-            .returning(move |_, _, _| Ok(shares_pc1_backup1.clone()));
+        hosts_mock
+            .expect_list_shares()
+            .with(eq("pc-1"), eq(1))
+            .returning(move |_, _| Ok(shares_pc1_backup1.clone()));
 
-        let list_shares_pc1_backup2_ctx = MockHostsTrait::list_shares_context();
-        list_shares_pc1_backup2_ctx
-            .expect()
-            .with(eq(topdir), eq("pc-1"), eq(2))
-            .returning(move |_, _, _| Ok(shares_pc1_backup2.clone()));
+        hosts_mock
+            .expect_list_shares()
+            .with(eq("pc-1"), eq(2))
+            .returning(move |_, _| Ok(shares_pc1_backup2.clone()));
 
-        let list_file_pc1_backup1_volume1_test_ctx = MockSearchTrait::list_file_from_dir_context();
-        list_file_pc1_backup1_volume1_test_ctx
-            .expect()
-            .with(eq(topdir), eq("pc-1"), eq(1), eq("/volume1/test"), eq(""))
-            .returning(move |_, _, _, _, _| {
+        search_mock
+            .expect_list_file_from_dir()
+            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq(""))
+            .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("supertest", FileType::Dir),
                     create_file_attributes("toto", FileType::Dir),
                 ])
             });
 
-        let list_file_pc1_backup1_volume1_test_supertest_ctx =
-            MockSearchTrait::list_file_from_dir_context();
-        list_file_pc1_backup1_volume1_test_supertest_ctx
-            .expect()
-            .with(
-                eq(topdir),
-                eq("pc-1"),
-                eq(1),
-                eq("/volume1/test"),
-                eq("supertest"),
-            )
-            .returning(move |_, _, _, _, _| {
+        search_mock
+            .expect_list_file_from_dir()
+            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq("supertest"))
+            .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("de", FileType::Dir),
                     create_file_attributes("test2", FileType::Dir),
                 ])
             });
 
-        let list_file_pc1_backup1_volume1_test_supertest_de_ctx =
-            MockSearchTrait::list_file_from_dir_context();
-        list_file_pc1_backup1_volume1_test_supertest_de_ctx
-            .expect()
-            .with(
-                eq(topdir),
-                eq("pc-1"),
-                eq(1),
-                eq("/volume1/test"),
-                eq("supertest/de"),
-            )
-            .returning(move |_, _, _, _, _| {
+        search_mock
+            .expect_list_file_from_dir()
+            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq("supertest/de"))
+            .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("test", FileType::Dir),
                     create_file_attributes("en", FileType::Dir),
@@ -449,18 +421,15 @@ mod tests {
                 ])
             });
 
-        let list_file_pc1_backup1_volume1_test_supertest_de_test_ctx =
-            MockSearchTrait::list_file_from_dir_context();
-        list_file_pc1_backup1_volume1_test_supertest_de_test_ctx
-            .expect()
+        search_mock
+            .expect_list_file_from_dir()
             .with(
-                eq(topdir),
                 eq("pc-1"),
                 eq(1),
                 eq("/volume1/test"),
                 eq("supertest/de/test"),
             )
-            .returning(move |_, _, _, _, _| {
+            .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("file1", FileType::File),
                     create_file_attributes("file2", FileType::File),
@@ -468,30 +437,19 @@ mod tests {
                 ])
             });
 
-        (
-            view,
-            list_hosts_ctx,
-            list_backups_pc1_ctx,
-            list_backups_pc2_ctx,
-            list_backups_pc3_ctx,
-            list_shares_pc1_backup1_ctx,
-            list_shares_pc1_backup2_ctx,
-            list_file_pc1_backup1_volume1_test_ctx,
-            list_file_pc1_backup1_volume1_test_supertest_ctx,
-            list_file_pc1_backup1_volume1_test_supertest_de_ctx,
-            list_file_pc1_backup1_volume1_test_supertest_de_test_ctx,
-        )
+        BackupPC::new(topdir, hosts_mock, search_mock)
     }
 
     #[test]
     fn test_list_host_empty() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&[]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], create_file_attributes("pc-1", FileType::Dir));
         assert_eq!(result[1], create_file_attributes("pc-2", FileType::Dir));
@@ -500,13 +458,15 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&["pc-1"]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
+        println!("{:?}", result);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], create_file_attributes("1", FileType::Dir));
         assert_eq!(result[1], create_file_attributes("2", FileType::Dir));
@@ -514,13 +474,14 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&["pc-1", "1"]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], create_file_attributes("home", FileType::Dir));
@@ -529,13 +490,14 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1"]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], create_file_attributes("test", FileType::Dir));
@@ -544,13 +506,14 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test"]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
         assert_eq!(
@@ -562,13 +525,14 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest"]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], create_file_attributes("de", FileType::Dir));
@@ -577,30 +541,32 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest_de() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de"]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
         println!("{:?}", result);
         assert_eq!(result.len(), 4);
-        assert_eq!(result[0], create_file_attributes("test", FileType::Dir));
-        assert_eq!(result[1], create_file_attributes("en", FileType::Dir));
-        assert_eq!(result[2], create_file_attributes("es", FileType::Dir));
-        assert_eq!(result[3], create_file_attributes("fr", FileType::Dir));
+        assert_eq!(result[0], create_file_attributes("en", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes("es", FileType::Dir));
+        assert_eq!(result[2], create_file_attributes("fr", FileType::Dir));
+        assert_eq!(result[3], create_file_attributes("test", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest_de_test() {
-        let mocks = create_view();
-        let view = mocks.0;
+        let view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de", "test"]);
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let mut result = result.unwrap();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
         println!("{:?}", result);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], create_file_attributes("file1", FileType::File));
