@@ -8,6 +8,12 @@
     "@semantic-release/changelog",
     "@semantic-release/npm",
     [
+      "@semantic-release-cargo/semantic-release-cargo",
+      {
+        "registry": "gitea"
+      }
+    ],
+    [
       "@saithodev/semantic-release-gitea",
       {
         "assets": [

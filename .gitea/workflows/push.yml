@@ -6,37 +6,39 @@ jobs:
   test:
     env:
       RUNNER_TOOL_CACHE: /toolcache # Runner Tool Cache
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-latest
+      PKG_CONFIG_SYSROOT_DIR: /
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          # - target: x86_64-unknown-linux-musl
+          #   os: ubuntu-latest
+          # - target: x86_64-pc-windows-msvc
+          #   os: windows-latest
     steps:
-      - name: Cargo cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ./target
-          key: build-cargo-registry
-
       - uses: lukka/get-cmake@latest
         with:
           useLocalCache: true
           useCloudCache: false
 
       - name: Install fuse
-        run: sudo apt update && sudo apt-get install -y libfuse-dev
+        run: apt update && apt-get install -y libfuse-dev musl-tools
+        if: startsWith(matrix.os, 'ubuntu')
+
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions-rs/cargo@v1
         with:
-          command: test
+          targets: "${{ matrix.target }}"
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
+      - name: Test
+        run: cargo test
+
+      - run: echo "RUSTFLAGS=${RUSTFLAGS} -C link-args=-lpthread -C target-feature=+crt-static" >> "${GITHUB_ENV}"
+        if: endsWith(matrix.target, 'musl')
+
+      - name: Build Binary
+        run: cargo build --verbose --locked --release --target ${{ matrix.target }}
