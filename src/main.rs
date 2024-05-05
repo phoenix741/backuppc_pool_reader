@@ -9,7 +9,7 @@ mod view;
 
 use crate::hosts::HostsTrait;
 use attribute_file::{Search, SearchTrait};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use decode_attribut::{FileAttributes, FileType};
 use std::env;
 use std::{
@@ -20,20 +20,50 @@ use std::{
 const CHUNK_SIZE: usize = 4 * 65536;
 
 #[derive(Parser)]
+#[command(version, about, long_about = None)]
 struct Cli {
-    /// The pattern to look for
-    command: String,
-    /// The path to the file to read
-    path: String,
-    /// host
-    #[arg(long)]
-    host: Option<String>,
-    /// backup number
-    #[arg(short, long)]
-    number: Option<u32>,
-    /// share name
-    #[arg(short, long)]
-    share: Option<String>,
+    #[command(subcommand)]
+    subcommand: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Cat {
+        /// The path to the file to read
+        path: String,
+        /// host
+        #[clap(long)]
+        host: Option<String>,
+        /// backup number
+        #[clap(long)]
+        number: Option<u32>,
+        /// share name
+        #[clap(long)]
+        share: Option<String>,
+    },
+
+    Ls {
+        /// host
+        host: String,
+        /// backup number
+        number: u32,
+        /// share name
+        share: String,
+        /// The path to the file to read
+        path: String,
+    },
+
+    Hosts {},
+
+    Backups {
+        /// host
+        host: String,
+    },
+
+    Mount {
+        /// The path to the file to read
+        path: String,
+    },
 }
 
 fn reader_to_stdout<R: Read>(mut reader: R) -> Result<(), Error> {
@@ -157,40 +187,32 @@ fn main() {
     env_logger::init();
 
     let args = Cli::parse();
+    let subcommand = args.subcommand.expect("No subcommand provided");
 
     let topdir = match env::var("BPC_TOPDIR") {
         Ok(value) => value,
         Err(_) => "/var/lib/backuppc".to_string(),
     };
 
-    let command = args.command;
-    let filename = args.path;
-
-    match command.as_str() {
-        "cat" => {
-            read_file_to_stdout(&topdir, args.host, args.number, args.share, &filename).unwrap();
+    match subcommand {
+        Commands::Cat {
+            path,
+            host,
+            number,
+            share,
+        } => {
+            read_file_to_stdout(&topdir, host, number, share, &path).unwrap();
         }
-        "ls" => {
-            let Some(hostname) = args.host else {
-                println!("No host specified");
-                return;
-            };
-            let Some(backup_number) = args.number else {
-                println!("No backup number specified");
-                return;
-            };
-
-            let Some(share) = args.share else {
-                println!("No share specified");
-                return;
-            };
-
-            let attrs =
-                Search::list_file_from_dir(&topdir, &hostname, backup_number, &share, &filename)
-                    .unwrap();
+        Commands::Ls {
+            host,
+            number,
+            share,
+            path,
+        } => {
+            let attrs = Search::list_file_from_dir(&topdir, &host, number, &share, &path).unwrap();
             print_ls(attrs);
         }
-        "hosts" => {
+        Commands::Hosts {} => {
             let hosts = hosts::Hosts::list_hosts(&topdir);
             match hosts {
                 Ok(hosts) => {
@@ -203,8 +225,8 @@ fn main() {
                 }
             }
         }
-        "backups" => {
-            let backups = hosts::Hosts::list_backups(&topdir, &filename);
+        Commands::Backups { host } => {
+            let backups = hosts::Hosts::list_backups(&topdir, &host);
             match backups {
                 Ok(backups) => {
                     for backup in backups {
@@ -216,12 +238,10 @@ fn main() {
                 }
             }
         }
-        "mount" => {
-            let mountpoint = filename;
+        Commands::Mount { path } => {
             let options = [];
 
-            fuser::mount2(filesystem::BackupPCFS::new(&topdir), mountpoint, &options).unwrap();
+            fuser::mount2(filesystem::BackupPCFS::new(&topdir), path, &options).unwrap();
         }
-        _ => println!("Unknown command: {command}"),
     }
 }
