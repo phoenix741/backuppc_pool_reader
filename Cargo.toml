@@ -3,11 +3,12 @@ name = "backuppc_pool_reader"
 description = "A Library and CLI for reading BackupPC pool files (contains a FUSE file system to mount the pool)"
 homepage = "https://gogs.shadoware.org/phoenix/backuppc_pool"
 repository = "https://gogs.shadoware.org/phoenix/backuppc_pool.git"
-readme = "README"
+readme = "README.md"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 keywords = ["backuppc", "pool", "fuse", "filesystem"]
+publish = ["gitea"]
 
 [lib]
 name = "backuppc_pool_reader"

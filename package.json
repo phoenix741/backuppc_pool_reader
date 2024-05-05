@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/phoenix741/backuppc_pool_reader.git"
+    "url": "https://gogs.shadoware.org/phoenix/backuppc_pool.git"
   },
   "scripts": {
     "semantic-release": "semantic-release"
