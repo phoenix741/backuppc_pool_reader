@@ -59,3 +59,12 @@ jobs:
           tar: all
           zip: windows
           token: ${{ secrets.RELEASE_TOKEN }}
+          dry-run: true
+
+      # - name: Use Go Action
+      #   id: use-go-action
+      #   uses: https://gitea.com/actions/release-action@main
+      #   with:
+      #     files: |-
+      #       bin/**
+      #     api_key: "${{secrets.RELEASE_TOKEN}}"

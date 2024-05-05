@@ -11,19 +11,33 @@ on:
 
 jobs:
   release-plz:
+    env:
+      RUNNER_TOOL_CACHE: /toolcache # Runner Tool Cache
     name: Release-plz
     runs-on: ubuntu-latest
+    container:
+      image: catthehacker/ubuntu:act-latest
     steps:
+      - name: Cargo cache
+        uses: https://gitea.com/actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ./target
+          key: build-cargo-registry
+
       - uses: lukka/get-cmake@latest
       - name: Install fuse
         run: sudo apt update && sudo apt-get install -y libfuse-dev
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: https://gitea.com/actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5
         env:
@@ -31,6 +45,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           CARGO_REGISTRIES_GITEA_TOKEN: ${{ secrets.CARGO_REGISTRIES_GITEA_TOKEN }}
+          RUST_LOG: trace
 
       # - name: Import GPG key
       #   id: import-gpg
