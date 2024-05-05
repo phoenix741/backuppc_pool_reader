@@ -1,16 +1,12 @@
-mod attribute_file;
-mod compress;
-mod decode_attribut;
-mod filesystem;
-mod hosts;
-mod pool;
-mod util;
-mod view;
+use backuppc_pool_reader::attribute_file::{Search, SearchTrait};
+use backuppc_pool_reader::compress::BackupPCReader;
+use backuppc_pool_reader::decode_attribut::{FileAttributes, FileType};
+use backuppc_pool_reader::filesystem::BackupPCFS;
+use backuppc_pool_reader::hosts::{Hosts, HostsTrait};
+use backuppc_pool_reader::pool::find_file_in_backuppc;
+use backuppc_pool_reader::util::{hex_string_to_vec, vec_to_hex_string};
 
-use crate::hosts::HostsTrait;
-use attribute_file::{Search, SearchTrait};
 use clap::{Parser, Subcommand};
-use decode_attribut::{FileAttributes, FileType};
 use std::env;
 use std::{
     fs::File,
@@ -79,7 +75,7 @@ fn reader_to_stdout<R: Read>(mut reader: R) -> Result<(), Error> {
 
 fn uncompress_to_stdout(input_file: &str) -> Result<(), Error> {
     let input_file = File::open(input_file).unwrap();
-    let reader = compress::BackupPCReader::new(input_file);
+    let reader = BackupPCReader::new(input_file);
     reader_to_stdout(reader)
 }
 
@@ -90,9 +86,9 @@ fn plain_to_stdout(input_file: &str) -> Result<(), Error> {
 }
 
 fn pool_file_to_stdout(topdir: &str, file_hash: &str) -> Result<(), String> {
-    let md5_hash: Vec<u8> = util::hex_string_to_vec(file_hash);
+    let md5_hash: Vec<u8> = hex_string_to_vec(file_hash);
 
-    match pool::find_file_in_backuppc(topdir, &md5_hash, None) {
+    match find_file_in_backuppc(topdir, &md5_hash, None) {
         Ok((file_path, is_compressed)) => {
             if is_compressed {
                 uncompress_to_stdout(&file_path).unwrap();
@@ -166,7 +162,7 @@ fn read_file_to_stdout(
 
         let attrs = Search::get_file(topdir, &hostname, backup_number, &share, file).unwrap();
         if attrs.len() == 1 && attrs[0].bpc_digest.len > 0 {
-            let hex = util::vec_to_hex_string(&attrs[0].bpc_digest.digest);
+            let hex = vec_to_hex_string(&attrs[0].bpc_digest.digest);
             pool_file_to_stdout(topdir, &hex)?;
         } else {
             return Err("File not found".to_string());
@@ -213,7 +209,7 @@ fn main() {
             print_ls(attrs);
         }
         Commands::Hosts {} => {
-            let hosts = hosts::Hosts::list_hosts(&topdir);
+            let hosts = Hosts::list_hosts(&topdir);
             match hosts {
                 Ok(hosts) => {
                     for host in hosts {
@@ -226,7 +222,7 @@ fn main() {
             }
         }
         Commands::Backups { host } => {
-            let backups = hosts::Hosts::list_backups(&topdir, &host);
+            let backups = Hosts::list_backups(&topdir, &host);
             match backups {
                 Ok(backups) => {
                     for backup in backups {
@@ -241,7 +237,7 @@ fn main() {
         Commands::Mount { path } => {
             let options = [];
 
-            fuser::mount2(filesystem::BackupPCFS::new(&topdir), path, &options).unwrap();
+            fuser::mount2(BackupPCFS::new(&topdir), path, &options).unwrap();
         }
     }
 }
