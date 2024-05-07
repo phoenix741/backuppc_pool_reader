@@ -41,4 +41,4 @@ jobs:
         if: endsWith(matrix.target, 'musl')
 
       - name: Build Binary
-        run: cargo build --verbose --locked --release --target ${{ matrix.target }}
+        run: cargo build -F cli --verbose --locked --release --target ${{ matrix.target }}

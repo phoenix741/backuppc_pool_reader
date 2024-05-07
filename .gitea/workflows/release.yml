@@ -35,7 +35,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Binary
-        run: cargo build --release
+        run: cargo build --release -F cli
 
       - name: Create release archive
         run: |

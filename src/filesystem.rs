@@ -8,7 +8,6 @@ use twox_hash::XxHash64;
 
 extern crate fuser;
 extern crate libc;
-extern crate time;
 
 use fuser::{
     FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry,
