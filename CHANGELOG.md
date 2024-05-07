@@ -1,3 +1,10 @@
+## [1.0.1](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.0.0...v1.0.1) (2024-05-07)
+
+
+### Bug Fixes
+
+* ➖ remove optional dependency for the library part ([46f468b](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/46f468b3b0ac11859da18c34b3163832030de156))
+
 # 1.0.0 (2024-05-06)
 
 
