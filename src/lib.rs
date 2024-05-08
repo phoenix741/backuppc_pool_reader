@@ -4,8 +4,7 @@ pub mod decode_attribut;
 pub mod hosts;
 pub mod pool;
 pub mod util;
+pub mod view;
 
 #[cfg(feature = "fuse")]
 pub mod filesystem;
-#[cfg(feature = "fuse")]
-pub mod view;
