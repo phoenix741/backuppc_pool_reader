@@ -1,3 +1,10 @@
+## [1.0.2](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.0.1...v1.0.2) (2024-05-08)
+
+
+### Bug Fixes
+
+* 🐛 missing view that no depend on fuse ([a7c1c70](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/a7c1c704ce156e9e1a208909df4e1d23a4ca1503))
+
 ## [1.0.1](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.0.0...v1.0.1) (2024-05-07)
 
 
