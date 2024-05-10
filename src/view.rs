@@ -1,4 +1,5 @@
 use log::info;
+use lru::LruCache;
 use std::collections::HashMap;
 use std::fs::File;
 /// In this application we have
@@ -14,6 +15,7 @@ use std::fs::File;
 /// - cache the metadata of the files in case of multiple access
 ///
 use std::io::Read;
+use std::num::NonZeroUsize;
 
 use crate::compress::BackupPCReader;
 use crate::decode_attribut::{FileAttributes, FileType};
@@ -39,6 +41,7 @@ pub struct BackupPC {
     topdir: String,
     hosts: Box<dyn HostsTrait>,
     search: Box<dyn SearchTrait>,
+    cache: LruCache<String, Vec<FileAttributes>>,
 }
 
 fn sanitize_path(path: &str) -> Vec<&str> {
@@ -47,12 +50,29 @@ fn sanitize_path(path: &str) -> Vec<&str> {
         .collect::<Vec<&str>>()
 }
 
+const CACHE_SIZE: usize = 1000;
+
 impl BackupPC {
     pub fn new(topdir: &str, hosts: Box<dyn HostsTrait>, search: Box<dyn SearchTrait>) -> Self {
         BackupPC {
             topdir: topdir.to_string(),
             hosts,
             search,
+            cache: LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap()),
+        }
+    }
+
+    pub fn new_with_capacity(
+        topdir: &str,
+        hosts: Box<dyn HostsTrait>,
+        search: Box<dyn SearchTrait>,
+        capacity: usize,
+    ) -> Self {
+        BackupPC {
+            topdir: topdir.to_string(),
+            hosts,
+            search,
+            cache: LruCache::new(NonZeroUsize::new(capacity).unwrap()),
         }
     }
 
@@ -141,7 +161,7 @@ impl BackupPC {
         Ok((shares, selected_share, share_size))
     }
 
-    pub fn list(&self, path: &[&str]) -> Result<Vec<FileAttributes>> {
+    pub fn direct_list(&self, path: &[&str]) -> Result<Vec<FileAttributes>> {
         info!("List: {path}", path = path.join("/"));
         match path.len() {
             0 => {
@@ -188,7 +208,26 @@ impl BackupPC {
         }
     }
 
-    pub fn read_file(&self, path: &[&str]) -> Result<Box<dyn Read>> {
+    pub fn list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
+        let key = path
+            .iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+            .join("/");
+
+        if let Some(cached_result) = self.cache.get(&key) {
+            return Ok(cached_result.clone());
+        }
+
+        let mut result = self.direct_list(path)?;
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+        self.cache.put(key, result.clone());
+
+        Ok(result)
+    }
+
+    pub fn read_file(&mut self, path: &[&str]) -> Result<Box<dyn Read>> {
         info!("Read file: {path}", path = path.join("/"));
         let filename = path.last().ok_or_else(|| {
             std::io::Error::new(
@@ -442,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_list_host_empty() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&[]);
         assert!(result.is_ok());
@@ -458,7 +497,7 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&["pc-1"]);
         assert!(result.is_ok());
@@ -474,7 +513,7 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&["pc-1", "1"]);
         assert!(result.is_ok());
@@ -490,7 +529,7 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1"]);
         assert!(result.is_ok());
@@ -506,7 +545,7 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test"]);
         assert!(result.is_ok());
@@ -525,7 +564,7 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest"]);
         assert!(result.is_ok());
@@ -541,7 +580,7 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest_de() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de"]);
         assert!(result.is_ok());
@@ -559,7 +598,7 @@ mod tests {
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest_de_test() {
-        let view = create_view();
+        let mut view = create_view();
 
         let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de", "test"]);
         assert!(result.is_ok());

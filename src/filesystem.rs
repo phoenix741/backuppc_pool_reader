@@ -310,7 +310,7 @@ impl BackupPCFS {
         attribute.map(|attr| (duration, attr.attr))
     }
 
-    fn create_reader(&self, ino: u64) -> Result<Box<dyn Read>> {
+    fn create_reader(&mut self, ino: u64) -> Result<Box<dyn Read>> {
         let binding = ROOT_ELEMENT;
         let cache_element = match ino {
             1 => Some(&binding),
