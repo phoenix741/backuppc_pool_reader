@@ -1,3 +1,10 @@
+## [1.1.1](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.1.0...v1.1.1) (2024-05-10)
+
+
+### Bug Fixes
+
+* add info to tell that trait are Send and Sync ([b2734f3](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/b2734f3ad259cff421e1f3e33e67a671506debd0))
+
 # [1.1.0](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.0.2...v1.1.0) (2024-05-10)
 
 
