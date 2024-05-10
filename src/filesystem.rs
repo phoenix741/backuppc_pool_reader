@@ -1,4 +1,4 @@
-use log::{debug, error};
+use log::{debug, error, info};
 use lru::LruCache;
 use std::hash::Hasher;
 use std::io::Read;
@@ -386,6 +386,10 @@ impl BackupPCFS {
                 let to_read = usize::try_from(to_read)?;
                 let size: usize = opened_file.reader.read(&mut buffer[..to_read])?;
                 remaining -= size as i64;
+                if size == 0 {
+                    info!("End of file reached");
+                    break;
+                }
             }
             opened_file.offset = offset;
         }
