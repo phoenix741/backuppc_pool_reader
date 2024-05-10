@@ -1,3 +1,10 @@
+## [1.1.2](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.1.1...v1.1.2) (2024-05-10)
+
+
+### Bug Fixes
+
+* 🧵 add info on multithread read file ([86c2126](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/86c21260672f72f5585c55fb81fc3260dd25443c))
+
 ## [1.1.1](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.1.0...v1.1.1) (2024-05-10)
 
 
