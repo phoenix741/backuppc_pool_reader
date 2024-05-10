@@ -227,7 +227,7 @@ impl BackupPC {
         Ok(result)
     }
 
-    pub fn read_file(&mut self, path: &[&str]) -> Result<Box<dyn Read>> {
+    pub fn read_file(&mut self, path: &[&str]) -> Result<Box<dyn Read + Sync + Send>> {
         info!("Read file: {path}", path = path.join("/"));
         let filename = path.last().ok_or_else(|| {
             std::io::Error::new(
