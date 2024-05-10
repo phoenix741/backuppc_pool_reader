@@ -7,6 +7,7 @@ use backuppc_pool_reader::pool::find_file_in_backuppc;
 use backuppc_pool_reader::util::{hex_string_to_vec, vec_to_hex_string};
 
 use clap::{Parser, Subcommand};
+use log::info;
 use std::env;
 use std::{
     fs::File,
@@ -164,9 +165,14 @@ fn read_file_to_stdout(
         let attrs = search
             .get_file(&hostname, backup_number, &share, file)
             .unwrap();
-        if attrs.len() == 1 && attrs[0].bpc_digest.len > 0 {
-            let hex = vec_to_hex_string(&attrs[0].bpc_digest.digest);
-            pool_file_to_stdout(topdir, &hex)?;
+        if attrs.len() == 1 {
+            if attrs[0].bpc_digest.len > 0 {
+                let hex = vec_to_hex_string(&attrs[0].bpc_digest.digest);
+                info!("Show file with hash {hex}");
+                pool_file_to_stdout(topdir, &hex)?;
+            } else {
+                return Err("No hash found".to_string());
+            }
         } else {
             return Err("File not found".to_string());
         }
