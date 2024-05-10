@@ -77,7 +77,7 @@ pub struct BackupInformation {
 }
 
 #[cfg_attr(test, automock)]
-pub trait HostsTrait {
+pub trait HostsTrait: Send + Sync {
     fn list_hosts(&self) -> Result<Vec<String>>;
     fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>>;
     fn list_shares(&self, hostname: &str, backup_number: u32) -> Result<Vec<String>>;

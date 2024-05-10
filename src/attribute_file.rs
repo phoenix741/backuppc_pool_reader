@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[cfg_attr(test, automock)]
-pub trait SearchTrait {
+pub trait SearchTrait: Send + Sync {
     fn read_attrib(&self, file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>>;
     fn list_file_from_dir(
         &self,
