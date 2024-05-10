@@ -1,3 +1,10 @@
+# [1.1.0](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.0.2...v1.1.0) (2024-05-10)
+
+
+### Features
+
+* ⚡️ add a cache layer in the view ([2b23b4f](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/2b23b4fd47c46b5ccdf07958f36f7741c59ac031))
+
 ## [1.0.2](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.0.1...v1.0.2) (2024-05-08)
 
 
