@@ -1,3 +1,18 @@
+# [1.2.0](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.1.2...v1.2.0) (2024-05-11)
+
+
+### Bug Fixes
+
+* 🐛 fix error message when the file can't be read ([31c6fb1](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/31c6fb198bc34d809218fd9de8b1eb5c1909c6d9))
+* 🚑️ fix the fuse driver when the file is empty ([a9682dc](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/a9682dca2f144e49f49240d665ba412325e46361))
+* fix date in the the fuse driver ([13aa2be](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/13aa2bef18e61c59ebf860941e645711decaf7d1))
+
+
+### Features
+
+* ✨ add attribute file reader ([da15ce5](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/da15ce538125bf937c3f1fee4ff544468b299e2e))
+* ✨ add the management of hardlink on backuppc ([ad15374](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/ad15374db9e6ccc9a7da9a5ef6e02ed6405682a6))
+
 ## [1.1.2](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.1.1...v1.1.2) (2024-05-10)
 
 
