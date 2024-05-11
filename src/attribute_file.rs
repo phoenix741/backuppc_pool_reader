@@ -21,6 +21,13 @@ pub trait SearchTrait: Send + Sync {
         share: &str,
         filename: &str,
     ) -> Result<Vec<FileAttributes>>;
+    fn list_attributes(
+        &self,
+        hostname: &str,
+        backup_number: u32,
+        attrib_path: &str,
+        attrib_file: &str,
+    ) -> Result<Vec<FileAttributes>>;
     fn get_file(
         &self,
         hostname: &str,
@@ -41,7 +48,11 @@ impl Search {
         }
     }
 
-    fn search_attrib_file(&self, backup_dir: &str) -> Option<(String, std::path::PathBuf)> {
+    fn search_attrib_file(
+        &self,
+        backup_dir: &str,
+        attrib_file: &str,
+    ) -> Option<(String, std::path::PathBuf)> {
         // Search for a file starting with the filename "attrib_" in the directory
         let file = std::fs::read_dir(backup_dir)
             .ok()?
@@ -56,7 +67,7 @@ impl Search {
                     None
                 }
             })
-            .find(|(name, _)| name.starts_with("attrib_"));
+            .find(|(name, _)| name.starts_with(attrib_file));
 
         file
     }
@@ -80,22 +91,20 @@ impl SearchTrait for Search {
         }
     }
 
-    fn list_file_from_dir(
+    fn list_attributes(
         &self,
         hostname: &str,
         backup_number: u32,
-        share: &str,
-        filename: &str,
+        attrib_path: &str,
+        attrib_file: &str,
     ) -> Result<Vec<FileAttributes>> {
         let backup_dir = format!(
-            "{}/pc/{hostname}/{backup_number}/{}/{}",
-            self.topdir,
-            mangle_filename(share),
-            mangle(filename)
+            "{}/pc/{hostname}/{backup_number}/{}",
+            self.topdir, attrib_path,
         );
         info!("Looking for attributes in {backup_dir}");
 
-        let file = self.search_attrib_file(&backup_dir);
+        let file = self.search_attrib_file(&backup_dir, attrib_file);
 
         if let Some((_, file)) = file {
             // Get the hash at the right of the _ symbole
@@ -127,6 +136,17 @@ impl SearchTrait for Search {
         }
 
         Ok(Vec::new())
+    }
+
+    fn list_file_from_dir(
+        &self,
+        hostname: &str,
+        backup_number: u32,
+        share: &str,
+        filename: &str,
+    ) -> Result<Vec<FileAttributes>> {
+        let attrib_path = format!("{}/{}", mangle_filename(share), mangle(filename));
+        self.list_attributes(hostname, backup_number, &attrib_path, "attrib_")
     }
 
     fn get_file(

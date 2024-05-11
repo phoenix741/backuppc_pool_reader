@@ -30,7 +30,7 @@ use crate::attribute_file::SearchTrait;
 #[cfg(test)]
 use crate::hosts::HostsTrait;
 use crate::pool::find_file_in_backuppc;
-use crate::util::{unique, Result};
+use crate::util::{unique, vec_to_hex_string, Result};
 
 // Empty md5 digest (Vec<u8>) : d41d8cd98f00b204e9800998ecf8427e
 const EMPTY_MD5_DIGEST: [u8; 16] = [
@@ -76,8 +76,58 @@ impl BackupPC {
         }
     }
 
+    fn list_file_from_inode(
+        &mut self,
+        hostname: &str,
+        backup_number: u32,
+        inode: u64,
+    ) -> Result<Vec<FileAttributes>> {
+        let inode_dir = inode >> 17 & 0x7F;
+        let inode_file = inode >> 10 & 0x7F;
+        let attrib_path = format!("inode/{inode_dir:02x}");
+        let attrib_file = format!("attrib{inode_file:02x}_");
+
+        let key = format!("{attrib_path}/{attrib_file}");
+
+        info!("List file from inode {inode} with the key {key}");
+
+        if let Some(cached_result) = self.cache.get(&key) {
+            return Ok(cached_result.clone());
+        }
+
+        let mut result =
+            self.search
+                .list_attributes(hostname, backup_number, &attrib_path, &attrib_file)?;
+
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+        self.cache.put(key, result.clone());
+
+        Ok(result)
+    }
+
+    fn get_inode(
+        &mut self,
+        hostname: &str,
+        backup_number: u32,
+        inode: u64,
+    ) -> Result<Option<FileAttributes>> {
+        let mut inode_vec = inode.to_le_bytes().to_vec();
+        if let Some(last_non_zero) = inode_vec.iter().rposition(|&x| x != 0) {
+            inode_vec.truncate(last_non_zero + 1);
+        }
+
+        let inode_str = vec_to_hex_string(&inode_vec);
+
+        info!("Search inode {inode} with the str form {inode_str}");
+
+        let files = self.list_file_from_inode(hostname, backup_number, inode)?;
+        let inode = files.iter().find(|i| i.name == inode_str);
+
+        Ok(inode.cloned())
+    }
+
     fn list_file_from_dir(
-        &self,
+        &mut self,
         hostname: &str,
         backup_number: u32,
         share: &str,
@@ -111,11 +161,23 @@ impl BackupPC {
                 .search
                 .list_file_from_dir(hostname, backup.num, share, filename)?;
 
-            // TODO: Missing management of hard link ?
-            for file in files_from_backup {
+            for mut file in files_from_backup {
                 if file.type_ == FileType::Deleted {
                     files.remove(&file.name);
                 } else {
+                    if file.nlinks > 0 {
+                        let inode = file.inode;
+                        info!(
+                            "File {file} has nlinks {nlinks} (inode: {inode})",
+                            file = file.name,
+                            nlinks = file.nlinks
+                        );
+                        let inode_file = self.get_inode(hostname, backup.num, inode)?;
+                        if let Some(inode_file) = inode_file {
+                            file.bpc_digest = inode_file.bpc_digest.clone();
+                        }
+                    }
+
                     files.insert(file.name.clone(), file);
                 }
             }
@@ -161,7 +223,7 @@ impl BackupPC {
         Ok((shares, selected_share, share_size))
     }
 
-    pub fn direct_list(&self, path: &[&str]) -> Result<Vec<FileAttributes>> {
+    pub fn direct_list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
         info!("List: {path}", path = path.join("/"));
         match path.len() {
             0 => {
