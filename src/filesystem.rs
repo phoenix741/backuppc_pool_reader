@@ -1,4 +1,4 @@
-use log::{debug, error};
+use log::{debug, error, info};
 use lru::LruCache;
 use std::hash::Hasher;
 use std::io::Read;
@@ -57,10 +57,10 @@ impl BackupPCFileAttribute {
                 size: file.size,
                 blocks: file.size / 512,
                 blksize: 512,
-                atime: UNIX_EPOCH + Duration::from_millis(file.mtime),
-                mtime: UNIX_EPOCH + Duration::from_millis(file.mtime),
-                ctime: UNIX_EPOCH + Duration::from_millis(file.mtime),
-                crtime: UNIX_EPOCH + Duration::from_millis(file.mtime),
+                atime: UNIX_EPOCH + Duration::from_secs(file.mtime),
+                mtime: UNIX_EPOCH + Duration::from_secs(file.mtime),
+                ctime: UNIX_EPOCH + Duration::from_secs(file.mtime),
+                crtime: UNIX_EPOCH + Duration::from_secs(file.mtime),
                 kind: match file.type_ {
                     BackupPCFileType::Symlink => FileType::Symlink,
                     BackupPCFileType::Chardev => FileType::CharDevice,
@@ -386,6 +386,10 @@ impl BackupPCFS {
                 let to_read = usize::try_from(to_read)?;
                 let size: usize = opened_file.reader.read(&mut buffer[..to_read])?;
                 remaining -= size as i64;
+                if size == 0 {
+                    info!("End of file reached");
+                    break;
+                }
             }
             opened_file.offset = offset;
         }
