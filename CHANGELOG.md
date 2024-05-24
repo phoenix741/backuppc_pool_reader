@@ -1,3 +1,10 @@
+## [1.2.1](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.2.0...v1.2.1) (2024-05-24)
+
+
+### Bug Fixes
+
+* 🐛 fix missing share when multiple share overlap each others ([b6d0ab6](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/b6d0ab6ed3581e07257b5de4db5506155a34eaf0))
+
 # [1.2.0](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.1.2...v1.2.0) (2024-05-11)
 
 
