@@ -196,16 +196,21 @@ impl BackupPC {
             "List shares of: {hostname}/{backup_number}/{path}",
             path = path.join("/")
         );
-        let shares = self.hosts.list_shares(hostname, backup_number)?;
+        let mut shares = self.hosts.list_shares(hostname, backup_number)?;
 
         let mut selected_share: Option<String> = None;
         let mut share_size = 0;
+
+        // Ensure that shares are sorted by length (longest last) to ensure that the selected share is the share that
+        // is the most specific
+        shares.sort_by_key(|a| a.len());
 
         // Filter the shares that are not in the path
         let shares: Vec<String> = shares
             .into_iter()
             .filter_map(|share| {
                 let share_array = sanitize_path(&share);
+
                 if path.starts_with(&share_array) || path.eq(&share_array) {
                     share_size = share_array.len();
                     selected_share = Some(share);
@@ -259,12 +264,24 @@ impl BackupPC {
 
                 match selected_share {
                     None => Ok(shares),
-                    Some(selected_share) => self.list_file_from_dir(
-                        path[0],
-                        path[1].parse::<u32>().unwrap_or(0),
-                        &selected_share,
-                        &path[(2 + share_size)..].join("/"),
-                    ),
+                    Some(selected_share) => {
+                        let files = self.list_file_from_dir(
+                            path[0],
+                            path[1].parse::<u32>().unwrap_or(0),
+                            &selected_share,
+                            &path[(2 + share_size)..].join("/"),
+                        )?;
+
+                        // Add detected shares to files
+                        let mut files = files
+                            .into_iter()
+                            .chain(shares)
+                            .collect::<Vec<FileAttributes>>();
+
+                        files.sort_by(|a, b| a.name.cmp(&b.name));
+
+                        Ok(files)
+                    }
                 }
             }
         }
