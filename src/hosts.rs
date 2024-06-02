@@ -78,8 +78,52 @@ pub struct BackupInformation {
 
 #[cfg_attr(test, automock)]
 pub trait HostsTrait: Send + Sync {
+    /// List all the hosts in the backuppc pool.
+    ///
+    /// # Returns
+    ///
+    /// A vector of strings containing the list of hosts.
+    ///
+    /// # Errors
+    ///
+    /// If the directory topdir/pc cannot be read.
     fn list_hosts(&self) -> Result<Vec<String>>;
+
+    ///
+    /// List all the backups for a given host (used the format separed by tab).
+    ///
+    /// The backups are stored in the file topdir/pc/<hostname>/backups.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The name of the host to list the backups.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `BackupInformation` containing the list of backups.
+    ///
+    /// # Errors
+    ///
+    /// If the file topdir/pc/<hostname>/backups cannot be read.
     fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>>;
+
+    /// List all the backups until the filled backup for a given backup.
+    ///
+    /// Used to complete the missing backup
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The name of the host to list the backups.
+    /// * `backup_number` - The number of the backup to fill.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `BackupInformation` containing the list of backups.
+    ///
+    /// # Errors
+    ///
+    /// If the file topdir/pc/<hostname>/backups cannot be read.
+    ///
     fn list_backups_to_fill(&self, hostname: &str, backup_number: u32) -> Vec<BackupInformation>;
 }
 
@@ -88,6 +132,7 @@ pub struct Hosts {
 }
 
 impl Hosts {
+    #[must_use]
     pub fn new(topdir: &str) -> Self {
         Hosts {
             topdir: topdir.to_string(),
@@ -128,11 +173,6 @@ impl HostsTrait for Hosts {
         Ok(hosts)
     }
 
-    ///
-    /// List all the backups for a given host (used the format separed by tab).
-    ///
-    /// The backups are stored in the file topdir/pc/<hostname>/backups.
-    ///
     fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>> {
         info!("Listing backups for {hostname}");
 
@@ -184,9 +224,6 @@ impl HostsTrait for Hosts {
         Ok(backups)
     }
 
-    /// List all the backups until the filled backup for a given backup.
-    ///
-    /// Used to complete the missing backup
     fn list_backups_to_fill(&self, hostname: &str, backup_number: u32) -> Vec<BackupInformation> {
         let backups = self.list_backups(hostname).unwrap_or_else(|_| Vec::new());
         let backups = backups.iter().filter(|backup| backup.num >= backup_number);

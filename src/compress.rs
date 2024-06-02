@@ -7,11 +7,11 @@ use std::io::{self, BufRead, BufReader, Read};
 ///
 /// This struct wraps a generic `BufRead` type and provides additional functionality for interpreting compressed data.
 ///
-/// The compression format of BackupPC is a custom format that is not directly supported by the `flate2` crate.
-/// The goal of the InterpredAdapter is to interpret the BackupPC compression format and convert it to a format that
+/// The compression format of `BackupPC` is a custom format that is not directly supported by the `flate2` crate.
+/// The goal of the `InterpredAdapter` is to interpret the `BackupPC` compression format and convert it to a format that
 /// can be handled by the `flate2` crate.
 ///
-/// BackupPC format is a serie of chunk of data where some bytes are replaced to define the checksum at the end.
+/// `BackupPC` format is a serie of chunk of data where some bytes are replaced to define the checksum at the end.
 struct InterpretAdapter<R: BufRead> {
     inner: R,
     first: bool,

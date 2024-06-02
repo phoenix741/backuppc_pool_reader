@@ -52,7 +52,24 @@ fn sanitize_path(path: &str) -> Vec<&str> {
 
 const CACHE_SIZE: usize = 1000;
 
+/// Implementation of the `BackupPC` struct.
 impl BackupPC {
+    /// Creates a new `BackupPC` instance with the given parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `topdir` - The top directory path.
+    /// * `hosts` - A boxed trait object implementing the `HostsTrait` trait.
+    /// * `search` - A boxed trait object implementing the `SearchTrait` trait.
+    ///
+    /// # Returns
+    ///
+    /// A new `BackupPC` instance.
+    ///
+    /// # Panics
+    ///
+    /// The method can't panic
+    #[must_use]
     pub fn new(topdir: &str, hosts: Box<dyn HostsTrait>, search: Box<dyn SearchTrait>) -> Self {
         BackupPC {
             topdir: topdir.to_string(),
@@ -62,6 +79,24 @@ impl BackupPC {
         }
     }
 
+    /// Creates a new `BackupPC` instance with the given parameters and cache capacity.
+    ///
+    /// # Arguments
+    ///
+    /// * `topdir` - The top directory path.
+    /// * `hosts` - A boxed trait object implementing the `HostsTrait` trait.
+    /// * `search` - A boxed trait object implementing the `SearchTrait` trait.
+    /// * `capacity` - The cache capacity.
+    ///
+    /// # Returns
+    ///
+    /// A new `BackupPC` instance.
+    ///
+    /// # Panics
+    ///
+    /// If the capacity is zero.
+    ///
+    #[must_use]
     pub fn new_with_capacity(
         topdir: &str,
         hosts: Box<dyn HostsTrait>,
@@ -76,6 +111,19 @@ impl BackupPC {
         }
     }
 
+    /// Lists the files from the specified inode in the backuppc inode directory.
+    ///
+    /// The result is cached for performance.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `inode` - The inode number.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
     fn list_file_from_inode(
         &mut self,
         hostname: &str,
@@ -105,6 +153,20 @@ impl BackupPC {
         Ok(result)
     }
 
+    /// Gets the inode from the specified path.
+    ///
+    /// This method use the method `list_file_from_inode` to get the inode from the path. As the previous method cache
+    /// the result, this method have good performance is the read are sequential.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `inode` - The inode number.
+    ///
+    /// # Returns
+    ///
+    /// A `FileAttributes` instance.
     fn get_inode(
         &mut self,
         hostname: &str,
@@ -126,6 +188,23 @@ impl BackupPC {
         Ok(inode.cloned())
     }
 
+    /// Lists the files from the specified directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `share` - The share name.
+    /// * `filename` - The filename.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
+    ///
     fn list_file_from_dir(
         &mut self,
         hostname: &str,
@@ -175,6 +254,21 @@ impl BackupPC {
         Ok(files.values().cloned().collect())
     }
 
+    /// Lists the shares of the specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the shares, the selected share, and the share size.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
     fn list_shares_of(
         &mut self,
         hostname: &str,
@@ -218,6 +312,19 @@ impl BackupPC {
         Ok((shares, selected_share, share_size))
     }
 
+    /// Lists the files from the specified path (no cache).
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
     pub fn direct_list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
         info!("List: {path}", path = path.join("/"));
         match path.len() {
@@ -277,6 +384,22 @@ impl BackupPC {
         }
     }
 
+    /// Lists the files from the specified path.
+    ///
+    /// A cache is used to store the result of the search.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
+    ///
     pub fn list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
         let key = path
             .iter()
@@ -296,6 +419,20 @@ impl BackupPC {
         Ok(result)
     }
 
+    /// Reads a file from the specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A boxed trait object implementing the `Read`, `Sync`, and `Send` traits.
+    ///
+    /// # Errors
+    ///
+    /// If the file is not found, an error is returned.
+    ///
     pub fn read_file(&mut self, path: &[&str]) -> Result<Box<dyn Read + Sync + Send>> {
         info!("Read file: {path}", path = path.join("/"));
         let filename = path.last().ok_or_else(|| {
