@@ -254,6 +254,31 @@ impl BackupPC {
         Ok(files.values().cloned().collect())
     }
 
+    /// Lists the shares of the specified backup.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    ///
+    /// # Returns
+    ///
+    /// A vector of share names.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
+    pub fn list_shares(&mut self, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
+        info!("List shares: {hostname}/{backup_number}");
+        let files = self.list_file_from_dir(hostname, backup_number, None, None)?;
+        let shares = files
+            .iter()
+            .filter(|f| f.type_ == FileType::Dir)
+            .map(|f| f.name.clone())
+            .collect();
+        Ok(shares)
+    }
+
     /// Lists the shares of the specified path.
     ///
     /// # Arguments
