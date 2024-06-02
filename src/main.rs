@@ -1,3 +1,4 @@
+
 use backuppc_pool_reader::attribute_file::{Search, SearchTrait};
 use backuppc_pool_reader::compress::BackupPCReader;
 use backuppc_pool_reader::decode_attribut::{AttributeFile, FileAttributes, FileType};
@@ -262,7 +263,7 @@ fn main() {
             path,
         } => {
             let attrs = search
-                .list_file_from_dir(&host, number, &share, &path)
+                .list_file_from_dir(&host, number, Some(&share), Some(&path))
                 .unwrap();
             print_ls(attrs);
         }

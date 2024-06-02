@@ -14,12 +14,12 @@ use crate::{
 #[cfg_attr(test, automock)]
 pub trait SearchTrait: Send + Sync {
     fn read_attrib(&self, file: &str, is_compressed: bool) -> Result<Vec<FileAttributes>>;
-    fn list_file_from_dir(
+    fn list_file_from_dir<'a, 'b>(
         &self,
         hostname: &str,
         backup_number: u32,
-        share: &str,
-        filename: &str,
+        share: Option<&'a str>,
+        filename: Option<&'b str>,
     ) -> Result<Vec<FileAttributes>>;
     fn list_attributes(
         &self,
@@ -142,10 +142,18 @@ impl SearchTrait for Search {
         &self,
         hostname: &str,
         backup_number: u32,
-        share: &str,
-        filename: &str,
+        share: Option<&str>,
+        filename: Option<&str>,
     ) -> Result<Vec<FileAttributes>> {
-        let attrib_path = format!("{}/{}", mangle_filename(share), mangle(filename));
+        let share = share.map(mangle_filename);
+        let filename = filename.map(mangle);
+
+        let attrib_path = [share, filename]
+            .iter()
+            .filter_map(|f| f.as_deref())
+            .collect::<Vec<_>>()
+            .join("/");
+
         self.list_attributes(hostname, backup_number, &attrib_path, "attrib_")
     }
 
@@ -170,7 +178,7 @@ impl SearchTrait for Search {
         })?;
         let path = backup_dir_parts[..backup_dir_parts.len() - 1].join("/");
 
-        match self.list_file_from_dir(hostname, backup_number, share, &path) {
+        match self.list_file_from_dir(hostname, backup_number, Some(share), Some(&path)) {
             Ok(attributes) => Ok(attributes
                 .into_iter()
                 .filter(|attr| {

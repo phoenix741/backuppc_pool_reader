@@ -130,27 +130,16 @@ impl BackupPC {
         &mut self,
         hostname: &str,
         backup_number: u32,
-        share: &str,
-        filename: &str,
+        share: Option<&str>,
+        filename: Option<&str>,
     ) -> Result<Vec<FileAttributes>> {
-        info!("List file from dir: {hostname}/{backup_number}/{share}/{filename}",);
+        info!(
+            "List file from dir: {hostname}/{backup_number}/{}/{}",
+            share.unwrap_or_default(),
+            filename.unwrap_or_default()
+        );
         // First search the next oldest filled backup next to the current backup
-        let backups = self
-            .hosts
-            .list_backups(hostname)
-            .unwrap_or_else(|_| Vec::new());
-        let backups = backups.iter().filter(|backup| backup.num >= backup_number);
-        let mut backups_to_search: Vec<&crate::hosts::BackupInformation> = Vec::new();
-
-        for backup in backups {
-            backups_to_search.push(backup);
-
-            if backup.no_fill > 0 {
-                continue;
-            }
-            break;
-        }
-        backups_to_search.reverse();
+        let backups_to_search = self.hosts.list_backups_to_fill(hostname, backup_number);
 
         // Next search the file from the oldest filled backup to the current backup
         let mut files: HashMap<String, FileAttributes> = HashMap::new();
@@ -187,7 +176,7 @@ impl BackupPC {
     }
 
     fn list_shares_of(
-        &self,
+        &mut self,
         hostname: &str,
         backup_number: u32,
         path: &[&str],
@@ -196,7 +185,8 @@ impl BackupPC {
             "List shares of: {hostname}/{backup_number}/{path}",
             path = path.join("/")
         );
-        let mut shares = self.hosts.list_shares(hostname, backup_number)?;
+        let shares = self.list_file_from_dir(hostname, backup_number, None, None)?;
+        let mut shares = shares.iter().map(|share| &share.name).collect::<Vec<_>>();
 
         let mut selected_share: Option<String> = None;
         let mut share_size = 0;
@@ -209,11 +199,11 @@ impl BackupPC {
         let shares: Vec<String> = shares
             .into_iter()
             .filter_map(|share| {
-                let share_array = sanitize_path(&share);
+                let share_array = sanitize_path(share);
 
                 if path.starts_with(&share_array) || path.eq(&share_array) {
                     share_size = share_array.len();
-                    selected_share = Some(share);
+                    selected_share = Some(share.clone());
                     None
                 } else if share_array.starts_with(path) {
                     Some(share_array[path.len()..][0].to_string())
@@ -268,8 +258,8 @@ impl BackupPC {
                         let files = self.list_file_from_dir(
                             path[0],
                             path[1].parse::<u32>().unwrap_or(0),
-                            &selected_share,
-                            &path[(2 + share_size)..].join("/"),
+                            Some(&selected_share),
+                            Some(&path[(2 + share_size)..].join("/")),
                         )?;
 
                         // Add detected shares to files
@@ -291,7 +281,7 @@ impl BackupPC {
         let key = path
             .iter()
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<String>>()
             .join("/");
 
@@ -466,18 +456,6 @@ mod tests {
 
         let backups_pc3 = Vec::<BackupInformation>::new();
 
-        let shares_pc1_backup1 = vec![
-            "/home".to_string(),
-            "/volume1/test".to_string(),
-            "/volume1/test2".to_string(),
-        ];
-
-        let shares_pc1_backup2 = vec![
-            "/volume1/test".to_string(),
-            "/volume1/test2".to_string(),
-            "/volume2".to_string(),
-        ];
-
         hosts_mock
             .expect_list_hosts()
             .returning(move || Ok(hosts.clone()));
@@ -498,18 +476,44 @@ mod tests {
             .returning(move |_| Ok(backups_pc3.clone()));
 
         hosts_mock
-            .expect_list_shares()
+            .expect_list_backups_to_fill()
             .with(eq("pc-1"), eq(1))
-            .returning(move |_, _| Ok(shares_pc1_backup1.clone()));
-
-        hosts_mock
-            .expect_list_shares()
-            .with(eq("pc-1"), eq(2))
-            .returning(move |_, _| Ok(shares_pc1_backup2.clone()));
+            .returning(|_, _| vec![create_mock_backup(1)]);
 
         search_mock
             .expect_list_file_from_dir()
-            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq(""))
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1" && backup_number == &1 && share.is_none() && path.is_none()
+            })
+            .returning(move |_, _, _, _| {
+                Ok(vec![
+                    create_file_attributes("/home", FileType::Dir),
+                    create_file_attributes("/volume1/test", FileType::Dir),
+                    create_file_attributes("/volume1/test2", FileType::Dir),
+                ])
+            });
+
+        search_mock
+            .expect_list_file_from_dir()
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1" && backup_number == &2 && share.is_none() && path.is_none()
+            })
+            .returning(move |_, _, _, _| {
+                Ok(vec![
+                    create_file_attributes("/volume1/test", FileType::Dir),
+                    create_file_attributes("/volume1/test2", FileType::Dir),
+                    create_file_attributes("/volume2", FileType::Dir),
+                ])
+            });
+
+        search_mock
+            .expect_list_file_from_dir()
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path.is_empty())
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("supertest", FileType::Dir),
@@ -519,7 +523,12 @@ mod tests {
 
         search_mock
             .expect_list_file_from_dir()
-            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq("supertest"))
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path == "supertest")
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("de", FileType::Dir),
@@ -529,7 +538,12 @@ mod tests {
 
         search_mock
             .expect_list_file_from_dir()
-            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq("supertest/de"))
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path == "supertest/de")
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("test", FileType::Dir),
@@ -541,12 +555,12 @@ mod tests {
 
         search_mock
             .expect_list_file_from_dir()
-            .with(
-                eq("pc-1"),
-                eq(1),
-                eq("/volume1/test"),
-                eq("supertest/de/test"),
-            )
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path == "supertest/de/test")
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("file1", FileType::File),
