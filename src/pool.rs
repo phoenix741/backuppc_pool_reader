@@ -28,6 +28,11 @@ use crate::util;
 ///   and a flag indicating if the file is compressed (`true`) or not (`false`).
 /// * If the file is not found, an error message is returned.
 ///
+/// # Errors
+///
+/// - If the file hash is less than 2 bytes long, an error message is returned.
+/// - If the file is not found in the pool or cpool directory, an error message is returned.
+///
 /// # Examples
 ///
 /// ```

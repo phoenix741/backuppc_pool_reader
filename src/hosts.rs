@@ -2,7 +2,7 @@ use log::{debug, info};
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 
-use crate::util::{unmangle_filename, Result};
+use crate::util::Result;
 
 /// This module is used to list all available hosts in the backuppc pool
 ///
@@ -78,9 +78,53 @@ pub struct BackupInformation {
 
 #[cfg_attr(test, automock)]
 pub trait HostsTrait: Send + Sync {
+    /// List all the hosts in the backuppc pool.
+    ///
+    /// # Returns
+    ///
+    /// A vector of strings containing the list of hosts.
+    ///
+    /// # Errors
+    ///
+    /// If the directory topdir/pc cannot be read.
     fn list_hosts(&self) -> Result<Vec<String>>;
+
+    ///
+    /// List all the backups for a given host (used the format separed by tab).
+    ///
+    /// The backups are stored in the file topdir/pc/<hostname>/backups.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The name of the host to list the backups.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `BackupInformation` containing the list of backups.
+    ///
+    /// # Errors
+    ///
+    /// If the file topdir/pc/<hostname>/backups cannot be read.
     fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>>;
-    fn list_shares(&self, hostname: &str, backup_number: u32) -> Result<Vec<String>>;
+
+    /// List all the backups until the filled backup for a given backup.
+    ///
+    /// Used to complete the missing backup
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The name of the host to list the backups.
+    /// * `backup_number` - The number of the backup to fill.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `BackupInformation` containing the list of backups.
+    ///
+    /// # Errors
+    ///
+    /// If the file topdir/pc/<hostname>/backups cannot be read.
+    ///
+    fn list_backups_to_fill(&self, hostname: &str, backup_number: u32) -> Vec<BackupInformation>;
 }
 
 pub struct Hosts {
@@ -88,6 +132,7 @@ pub struct Hosts {
 }
 
 impl Hosts {
+    #[must_use]
     pub fn new(topdir: &str) -> Self {
         Hosts {
             topdir: topdir.to_string(),
@@ -128,11 +173,6 @@ impl HostsTrait for Hosts {
         Ok(hosts)
     }
 
-    ///
-    /// List all the backups for a given host (used the format separed by tab).
-    ///
-    /// The backups are stored in the file topdir/pc/<hostname>/backups.
-    ///
     fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>> {
         info!("Listing backups for {hostname}");
 
@@ -184,47 +224,21 @@ impl HostsTrait for Hosts {
         Ok(backups)
     }
 
-    ///
-    /// List all the shares for a given host and backup number.
-    ///
-    /// The shares are stored in the directory topdir/pc/<hostname>/<backup_number>.
-    ///
-    fn list_shares(&self, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
-        info!("Listing shares for {hostname} {backup_number}");
+    fn list_backups_to_fill(&self, hostname: &str, backup_number: u32) -> Vec<BackupInformation> {
+        let backups = self.list_backups(hostname).unwrap_or_else(|_| Vec::new());
+        let backups = backups.iter().filter(|backup| backup.num >= backup_number);
+        let mut backups_to_search: Vec<crate::hosts::BackupInformation> = Vec::new();
 
-        let pc_dir = std::path::Path::new(&self.topdir).join("pc");
-        let host_dir = pc_dir.join(hostname);
-        let share_dir = host_dir.join(format!("{backup_number}"));
+        for backup in backups {
+            backups_to_search.push(backup.clone());
 
-        let mut shares = Vec::new();
-
-        for entry in std::fs::read_dir(share_dir)? {
-            match entry {
-                Ok(entry) => {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        let share = path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_str()
-                            .unwrap_or_default()
-                            .to_string();
-
-                        let share = unmangle_filename(&share);
-
-                        if !share.is_empty() {
-                            shares.push(share);
-                        }
-                    }
-                }
-                Err(err) => {
-                    eprintln!("Error reading share directory of {hostname} {backup_number}: {err}",);
-                }
+            if backup.no_fill > 0 {
+                continue;
             }
+            break;
         }
+        backups_to_search.reverse();
 
-        debug!("Found {} shares", shares.len());
-
-        Ok(shares)
+        backups_to_search
     }
 }

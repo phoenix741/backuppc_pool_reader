@@ -52,7 +52,24 @@ fn sanitize_path(path: &str) -> Vec<&str> {
 
 const CACHE_SIZE: usize = 1000;
 
+/// Implementation of the `BackupPC` struct.
 impl BackupPC {
+    /// Creates a new `BackupPC` instance with the given parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `topdir` - The top directory path.
+    /// * `hosts` - A boxed trait object implementing the `HostsTrait` trait.
+    /// * `search` - A boxed trait object implementing the `SearchTrait` trait.
+    ///
+    /// # Returns
+    ///
+    /// A new `BackupPC` instance.
+    ///
+    /// # Panics
+    ///
+    /// The method can't panic
+    #[must_use]
     pub fn new(topdir: &str, hosts: Box<dyn HostsTrait>, search: Box<dyn SearchTrait>) -> Self {
         BackupPC {
             topdir: topdir.to_string(),
@@ -62,6 +79,24 @@ impl BackupPC {
         }
     }
 
+    /// Creates a new `BackupPC` instance with the given parameters and cache capacity.
+    ///
+    /// # Arguments
+    ///
+    /// * `topdir` - The top directory path.
+    /// * `hosts` - A boxed trait object implementing the `HostsTrait` trait.
+    /// * `search` - A boxed trait object implementing the `SearchTrait` trait.
+    /// * `capacity` - The cache capacity.
+    ///
+    /// # Returns
+    ///
+    /// A new `BackupPC` instance.
+    ///
+    /// # Panics
+    ///
+    /// If the capacity is zero.
+    ///
+    #[must_use]
     pub fn new_with_capacity(
         topdir: &str,
         hosts: Box<dyn HostsTrait>,
@@ -76,6 +111,19 @@ impl BackupPC {
         }
     }
 
+    /// Lists the files from the specified inode in the backuppc inode directory.
+    ///
+    /// The result is cached for performance.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `inode` - The inode number.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
     fn list_file_from_inode(
         &mut self,
         hostname: &str,
@@ -105,6 +153,20 @@ impl BackupPC {
         Ok(result)
     }
 
+    /// Gets the inode from the specified path.
+    ///
+    /// This method use the method `list_file_from_inode` to get the inode from the path. As the previous method cache
+    /// the result, this method have good performance is the read are sequential.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `inode` - The inode number.
+    ///
+    /// # Returns
+    ///
+    /// A `FileAttributes` instance.
     fn get_inode(
         &mut self,
         hostname: &str,
@@ -126,31 +188,37 @@ impl BackupPC {
         Ok(inode.cloned())
     }
 
+    /// Lists the files from the specified directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `share` - The share name.
+    /// * `filename` - The filename.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
+    ///
     fn list_file_from_dir(
         &mut self,
         hostname: &str,
         backup_number: u32,
-        share: &str,
-        filename: &str,
+        share: Option<&str>,
+        filename: Option<&str>,
     ) -> Result<Vec<FileAttributes>> {
-        info!("List file from dir: {hostname}/{backup_number}/{share}/{filename}",);
+        info!(
+            "List file from dir: {hostname}/{backup_number}/{}/{}",
+            share.unwrap_or_default(),
+            filename.unwrap_or_default()
+        );
         // First search the next oldest filled backup next to the current backup
-        let backups = self
-            .hosts
-            .list_backups(hostname)
-            .unwrap_or_else(|_| Vec::new());
-        let backups = backups.iter().filter(|backup| backup.num >= backup_number);
-        let mut backups_to_search: Vec<&crate::hosts::BackupInformation> = Vec::new();
-
-        for backup in backups {
-            backups_to_search.push(backup);
-
-            if backup.no_fill > 0 {
-                continue;
-            }
-            break;
-        }
-        backups_to_search.reverse();
+        let backups_to_search = self.hosts.list_backups_to_fill(hostname, backup_number);
 
         // Next search the file from the oldest filled backup to the current backup
         let mut files: HashMap<String, FileAttributes> = HashMap::new();
@@ -186,8 +254,48 @@ impl BackupPC {
         Ok(files.values().cloned().collect())
     }
 
+    /// Lists the shares of the specified backup.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    ///
+    /// # Returns
+    ///
+    /// A vector of share names.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
+    pub fn list_shares(&mut self, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
+        info!("List shares: {hostname}/{backup_number}");
+        let files = self.list_file_from_dir(hostname, backup_number, None, None)?;
+        let shares = files
+            .iter()
+            .filter(|f| f.type_ == FileType::Dir)
+            .map(|f| f.name.clone())
+            .collect();
+        Ok(shares)
+    }
+
+    /// Lists the shares of the specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname of the backup.
+    /// * `backup_number` - The backup number.
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the shares, the selected share, and the share size.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
     fn list_shares_of(
-        &self,
+        &mut self,
         hostname: &str,
         backup_number: u32,
         path: &[&str],
@@ -196,7 +304,8 @@ impl BackupPC {
             "List shares of: {hostname}/{backup_number}/{path}",
             path = path.join("/")
         );
-        let mut shares = self.hosts.list_shares(hostname, backup_number)?;
+        let shares = self.list_file_from_dir(hostname, backup_number, None, None)?;
+        let mut shares = shares.iter().map(|share| &share.name).collect::<Vec<_>>();
 
         let mut selected_share: Option<String> = None;
         let mut share_size = 0;
@@ -209,11 +318,11 @@ impl BackupPC {
         let shares: Vec<String> = shares
             .into_iter()
             .filter_map(|share| {
-                let share_array = sanitize_path(&share);
+                let share_array = sanitize_path(share);
 
                 if path.starts_with(&share_array) || path.eq(&share_array) {
                     share_size = share_array.len();
-                    selected_share = Some(share);
+                    selected_share = Some(share.clone());
                     None
                 } else if share_array.starts_with(path) {
                     Some(share_array[path.len()..][0].to_string())
@@ -228,6 +337,19 @@ impl BackupPC {
         Ok((shares, selected_share, share_size))
     }
 
+    /// Lists the files from the specified path (no cache).
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
     pub fn direct_list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
         info!("List: {path}", path = path.join("/"));
         match path.len() {
@@ -268,8 +390,8 @@ impl BackupPC {
                         let files = self.list_file_from_dir(
                             path[0],
                             path[1].parse::<u32>().unwrap_or(0),
-                            &selected_share,
-                            &path[(2 + share_size)..].join("/"),
+                            Some(&selected_share),
+                            Some(&path[(2 + share_size)..].join("/")),
                         )?;
 
                         // Add detected shares to files
@@ -287,11 +409,27 @@ impl BackupPC {
         }
     }
 
+    /// Lists the files from the specified path.
+    ///
+    /// A cache is used to store the result of the search.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `FileAttributes` instances.
+    ///
+    /// # Errors
+    ///
+    /// An error can't be returned if the hosts, backup, can't be read
+    ///
     pub fn list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
         let key = path
             .iter()
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<String>>()
             .join("/");
 
@@ -306,6 +444,20 @@ impl BackupPC {
         Ok(result)
     }
 
+    /// Reads a file from the specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file.
+    ///
+    /// # Returns
+    ///
+    /// A boxed trait object implementing the `Read`, `Sync`, and `Send` traits.
+    ///
+    /// # Errors
+    ///
+    /// If the file is not found, an error is returned.
+    ///
     pub fn read_file(&mut self, path: &[&str]) -> Result<Box<dyn Read + Sync + Send>> {
         info!("Read file: {path}", path = path.join("/"));
         let filename = path.last().ok_or_else(|| {
@@ -466,18 +618,6 @@ mod tests {
 
         let backups_pc3 = Vec::<BackupInformation>::new();
 
-        let shares_pc1_backup1 = vec![
-            "/home".to_string(),
-            "/volume1/test".to_string(),
-            "/volume1/test2".to_string(),
-        ];
-
-        let shares_pc1_backup2 = vec![
-            "/volume1/test".to_string(),
-            "/volume1/test2".to_string(),
-            "/volume2".to_string(),
-        ];
-
         hosts_mock
             .expect_list_hosts()
             .returning(move || Ok(hosts.clone()));
@@ -498,18 +638,44 @@ mod tests {
             .returning(move |_| Ok(backups_pc3.clone()));
 
         hosts_mock
-            .expect_list_shares()
+            .expect_list_backups_to_fill()
             .with(eq("pc-1"), eq(1))
-            .returning(move |_, _| Ok(shares_pc1_backup1.clone()));
-
-        hosts_mock
-            .expect_list_shares()
-            .with(eq("pc-1"), eq(2))
-            .returning(move |_, _| Ok(shares_pc1_backup2.clone()));
+            .returning(|_, _| vec![create_mock_backup(1)]);
 
         search_mock
             .expect_list_file_from_dir()
-            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq(""))
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1" && backup_number == &1 && share.is_none() && path.is_none()
+            })
+            .returning(move |_, _, _, _| {
+                Ok(vec![
+                    create_file_attributes("/home", FileType::Dir),
+                    create_file_attributes("/volume1/test", FileType::Dir),
+                    create_file_attributes("/volume1/test2", FileType::Dir),
+                ])
+            });
+
+        search_mock
+            .expect_list_file_from_dir()
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1" && backup_number == &2 && share.is_none() && path.is_none()
+            })
+            .returning(move |_, _, _, _| {
+                Ok(vec![
+                    create_file_attributes("/volume1/test", FileType::Dir),
+                    create_file_attributes("/volume1/test2", FileType::Dir),
+                    create_file_attributes("/volume2", FileType::Dir),
+                ])
+            });
+
+        search_mock
+            .expect_list_file_from_dir()
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path.is_empty())
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("supertest", FileType::Dir),
@@ -519,7 +685,12 @@ mod tests {
 
         search_mock
             .expect_list_file_from_dir()
-            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq("supertest"))
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path == "supertest")
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("de", FileType::Dir),
@@ -529,7 +700,12 @@ mod tests {
 
         search_mock
             .expect_list_file_from_dir()
-            .with(eq("pc-1"), eq(1), eq("/volume1/test"), eq("supertest/de"))
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path == "supertest/de")
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("test", FileType::Dir),
@@ -541,12 +717,12 @@ mod tests {
 
         search_mock
             .expect_list_file_from_dir()
-            .with(
-                eq("pc-1"),
-                eq(1),
-                eq("/volume1/test"),
-                eq("supertest/de/test"),
-            )
+            .withf(|hostname, backup_number, share, path| {
+                hostname == "pc-1"
+                    && backup_number == &1
+                    && share.is_some_and(|share| share == "/volume1/test")
+                    && path.is_some_and(|path| path == "supertest/de/test")
+            })
             .returning(move |_, _, _, _| {
                 Ok(vec![
                     create_file_attributes("file1", FileType::File),

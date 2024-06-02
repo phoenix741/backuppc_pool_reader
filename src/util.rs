@@ -12,6 +12,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 /// # Returns
 ///
 /// A string representing the hexadecimal values of the bytes in the vector.
+#[must_use]
 pub fn vec_to_hex_string(vec: &[u8]) -> String {
     vec.iter().fold(String::new(), |mut output, byte| {
         let _ = write!(output, "{byte:02x}");
@@ -28,6 +29,11 @@ pub fn vec_to_hex_string(vec: &[u8]) -> String {
 /// # Returns
 ///
 /// A vector of bytes representing the hexadecimal values in the string.
+///
+/// # Panics
+///
+/// Panics if the input string is not a valid hexadecimal string.
+#[must_use]
 pub fn hex_string_to_vec(hex_string: &str) -> Vec<u8> {
     hex_string
         .as_bytes()
@@ -45,6 +51,7 @@ pub fn hex_string_to_vec(hex_string: &str) -> Vec<u8> {
 /// # Returns
 ///
 /// A mangled filename where certain characters are replaced with their hexadecimal representation.
+#[must_use]
 pub fn mangle_filename(path_um: &str) -> String {
     let mut path = String::new();
 
@@ -75,6 +82,11 @@ pub fn mangle_filename(path_um: &str) -> String {
 /// # Returns
 ///
 /// An unmangled filename where hexadecimal representations are replaced with their original characters.
+///
+/// # Panics
+///
+/// Panics if the input string is not a valid mangled filename.
+#[must_use]
 pub fn unmangle_filename(path_m: &str) -> String {
     let mut path = String::new();
 
@@ -110,6 +122,7 @@ pub fn unmangle_filename(path_m: &str) -> String {
 /// # Returns
 ///
 /// A mangled file path where each component is mangled using the `mangle_filename` function.
+#[must_use]
 pub fn mangle(path_um: &str) -> String {
     if path_um.is_empty() {
         return String::new();
@@ -129,6 +142,7 @@ pub fn mangle(path_um: &str) -> String {
 /// # Returns
 ///
 /// A new iterable with only unique values
+#[must_use]
 pub fn unique<T: Eq + Hash + Clone>(iterable: impl IntoIterator<Item = T>) -> Vec<T> {
     let unique_elts: HashSet<T> = HashSet::from_iter(iterable);
     unique_elts.into_iter().collect()

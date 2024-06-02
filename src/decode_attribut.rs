@@ -135,6 +135,7 @@ pub struct FileAttributes {
 }
 
 impl FileAttributes {
+    #[must_use]
     pub fn from_host(host: String) -> Self {
         Self {
             name: host,
@@ -156,6 +157,7 @@ impl FileAttributes {
         }
     }
 
+    #[must_use]
     pub fn from_backup(backup: &BackupInformation) -> Self {
         Self {
             name: backup.num.to_string(),
@@ -177,6 +179,7 @@ impl FileAttributes {
         }
     }
 
+    #[must_use]
     pub fn from_share(share: String) -> Self {
         Self {
             name: share,
@@ -199,48 +202,48 @@ impl FileAttributes {
     }
 }
 
-/// Reads file attributes from a reader.
-///
-/// # Arguments
-///
-/// * `reader` - A mutable reference to a reader implementing the `Read` and `VarintRead` traits.
-///
-/// # Returns
-///
-/// Returns a `Result` containing the `FileAttributes` if the read was successful, or an `io::Error` if an error occurred.
-///
-/// # Examples
-///
-/// ```no_run
-/// use std::io;
-/// use std::fs::File;
-/// use std::io::Read;
-/// use backuppc_pool_reader::decode_attribut::FileAttributes;
-///
-/// let mut reader = File::open("test").unwrap();
-/// let result = FileAttributes::read_from(&mut reader);
-/// match result {
-///     Ok(attributes) => {
-///         // Handle the file attributes
-///     },
-///     Err(error) => {
-///         // Handle the error
-///     }
-/// }
-/// ```
-///
-/// # Errors
-///
-/// This function can return an `io::Error` with the kind `InvalidData` if the file type is invalid.
-///
-/// # Panics
-///
-/// This function will panic if the UTF-8 conversion of the file name or xattr key or value fails.
-///
-/// # Safety
-///
-/// This function assumes that the reader is properly initialized and that the data being read is valid.
 impl FileAttributes {
+    /// Reads file attributes from a reader.
+    ///
+    /// # Arguments
+    ///
+    /// * `reader` - A mutable reference to a reader implementing the `Read` and `VarintRead` traits.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the `FileAttributes` if the read was successful, or an `io::Error` if an error occurred.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an `io::Error` with the kind `InvalidData` if the file type is invalid.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the UTF-8 conversion of the file name or xattr key or value fails.
+    ///
+    /// # Safety
+    ///
+    /// This function assumes that the reader is properly initialized and that the data being read is valid.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::io;
+    /// use std::fs::File;
+    /// use std::io::Read;
+    /// use backuppc_pool_reader::decode_attribut::FileAttributes;
+    ///
+    /// let mut reader = File::open("test").unwrap();
+    /// let result = FileAttributes::read_from(&mut reader);
+    /// match result {
+    ///     Ok(attributes) => {
+    ///         // Handle the file attributes
+    ///     },
+    ///     Err(error) => {
+    ///         // Handle the error
+    ///     }
+    /// }
+    /// ```
     pub fn read_from<R: Read + VarintRead>(reader: &mut R) -> io::Result<Self> {
         let filename_len: usize = reader.read_varint()?;
         let mut name = vec![0u8; filename_len];
@@ -322,31 +325,35 @@ pub struct AttributeFile {
     pub attributes: Vec<FileAttributes>,
 }
 
-/// Reads an `AttributeFile` from a reader.
-///
-/// # Arguments
-///
-/// * `reader` - A mutable reference to a reader implementing `Read` and `VarintRead` traits.
-///
-/// # Returns
-///
-/// Returns a `Result` containing the decoded `AttributeFile` if successful, or a boxed `dyn Error` if an error occurs.
-///
-/// # Examples
-///
-/// ```no_run
-/// use std::io::Cursor;
-/// use byteorder::{BigEndian, ReadBytesExt};
-/// use backuppc_pool_reader::decode_attribut::AttributeFile;
-///
-/// let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
-/// let mut reader = Cursor::new(data);
-///
-/// let result = AttributeFile::read_from(&mut reader);
-/// assert!(result.is_ok());
-/// let attribute_file = result.unwrap();
-/// ```
 impl AttributeFile {
+    /// Reads an `AttributeFile` from a reader.
+    ///
+    /// # Arguments
+    ///
+    /// * `reader` - A mutable reference to a reader implementing `Read` and `VarintRead` traits.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the decoded `AttributeFile` if successful, or a boxed `dyn Error` if an error occurs.
+    ///
+    /// # Errors
+    ///
+    /// This function can return an `io::Error` if an error occurs while reading from the reader.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::io::Cursor;
+    /// use byteorder::{BigEndian, ReadBytesExt};
+    /// use backuppc_pool_reader::decode_attribut::AttributeFile;
+    ///
+    /// let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
+    /// let mut reader = Cursor::new(data);
+    ///
+    /// let result = AttributeFile::read_from(&mut reader);
+    /// assert!(result.is_ok());
+    /// let attribute_file = result.unwrap();
+    /// ```
     pub fn read_from<R: Read + VarintRead>(reader: &mut R) -> Result<Self, Box<dyn Error>> {
         let magic: u32 = reader.read_u32::<BigEndian>()?;
         if magic != BPC_ATTRIB_TYPE_XATTR {
