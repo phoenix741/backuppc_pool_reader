@@ -1,3 +1,11 @@
+## [1.2.2](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.2.1...v1.2.2) (2024-06-02)
+
+
+### Bug Fixes
+
+* 🐛 add missing method to list shares ([adced10](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/adced10314a56a2e3c07eaa610ee37caade46c65))
+* 🐛 concat shares for not filled backup ([f9270ba](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/f9270ba42bb4d43d49094550717b60aae1bef491))
+
 ## [1.2.1](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.2.0...v1.2.1) (2024-05-24)
 
 
