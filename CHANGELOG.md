@@ -1,3 +1,15 @@
+# [2.0.0](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.2.2...v2.0.0) (2024-08-12)
+
+
+### Bug Fixes
+
+* 🐛 fix encoding bug while file aren't in utf-8 ([a72e04b](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/a72e04b3c1d61f3eb4dbd18d6e5860988a5b42b5))
+
+
+### BREAKING CHANGES
+
+* The API is now rewritten to use vec<u8> instead of string.
+
 ## [1.2.2](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.2.1...v1.2.2) (2024-06-02)
 
 
