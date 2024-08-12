@@ -1,7 +1,38 @@
+use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
 use std::{collections::HashSet, hash::Hash};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+/// Converts a path to a vector of bytes.
+///
+/// # Arguments
+///
+/// * `path` - A path.
+///
+/// # Returns
+///
+/// A vector of bytes.
+///
+#[must_use]
+pub fn osstr_to_vec(path: &OsStr) -> Vec<u8> {
+    path.as_encoded_bytes().to_vec()
+}
+
+/// Converts a vector of bytes to a `PathBuf`.
+///
+/// # Arguments
+///
+/// * `vec` - A vector of bytes.
+///
+/// # Returns
+///
+/// A `PathBuf`.
+///
+#[must_use]
+pub fn vec_to_osstr(vec: &[u8]) -> OsString {
+    unsafe { OsString::from_encoded_bytes_unchecked(vec.to_owned()) }
+}
 
 /// Converts a vector of bytes to a hexadecimal string representation.
 ///
@@ -52,7 +83,21 @@ pub fn hex_string_to_vec(hex_string: &str) -> Vec<u8> {
 ///
 /// A mangled filename where certain characters are replaced with their hexadecimal representation.
 #[must_use]
-pub fn mangle_filename(path_um: &str) -> String {
+pub fn mangle_str_filename(path_um: &str) -> String {
+    mangle_filename(path_um.as_bytes())
+}
+
+/// Mangles a filename by replacing certain characters with their hexadecimal representation.
+///
+/// # Arguments
+///
+/// * `path_um` - The original filename.
+///
+/// # Returns
+///
+/// A mangled filename where certain characters are replaced with their hexadecimal representation.
+#[must_use]
+pub fn mangle_filename(path_um: &[u8]) -> String {
     let mut path = String::new();
 
     if path_um.is_empty() {
@@ -61,12 +106,12 @@ pub fn mangle_filename(path_um: &str) -> String {
 
     path.push('f');
 
-    for c in path_um.chars() {
-        if c != '%' && c != '/' && c != '\n' && c != '\r' {
-            path.push(c);
+    for &c in path_um {
+        if c.is_ascii() && c != b'%' && c != b'/' && c != b'\n' && c != b'\r' {
+            path.push(c as char);
         } else {
             path.push('%');
-            path.push_str(&format!("{:02x}", c as u8));
+            path.push_str(&format!("{:02x}", { c }));
         }
     }
 
@@ -87,8 +132,8 @@ pub fn mangle_filename(path_um: &str) -> String {
 ///
 /// Panics if the input string is not a valid mangled filename.
 #[must_use]
-pub fn unmangle_filename(path_m: &str) -> String {
-    let mut path = String::new();
+pub fn unmangle_filename(path_m: &str) -> Vec<u8> {
+    let mut path = Vec::<u8>::new();
 
     if path_m.is_empty() {
         return path;
@@ -104,9 +149,9 @@ pub fn unmangle_filename(path_m: &str) -> String {
         if c == '%' {
             let hex = chars.next().unwrap().to_string() + &chars.next().unwrap().to_string();
             let byte = u8::from_str_radix(&hex, 16).unwrap();
-            path.push(byte as char);
+            path.push(byte);
         } else {
-            path.push(c);
+            path.push(c as u8);
         }
     }
 
@@ -123,12 +168,13 @@ pub fn unmangle_filename(path_m: &str) -> String {
 ///
 /// A mangled file path where each component is mangled using the `mangle_filename` function.
 #[must_use]
-pub fn mangle(path_um: &str) -> String {
+pub fn mangle(path_um: &[u8]) -> String {
     if path_um.is_empty() {
         return String::new();
     }
 
-    let mangled_components: Vec<String> = path_um.split('/').map(mangle_filename).collect();
+    let mangled_components: Vec<String> =
+        path_um.split(|&c| c == b'/').map(mangle_filename).collect();
 
     mangled_components.join("/")
 }

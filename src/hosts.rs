@@ -2,7 +2,7 @@ use log::{debug, info};
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 
-use crate::util::Result;
+use crate::util::{osstr_to_vec, vec_to_osstr, Result};
 
 /// This module is used to list all available hosts in the backuppc pool
 ///
@@ -13,6 +13,7 @@ use crate::util::Result;
 use std::{
     fs::File,
     io::{BufRead, BufReader},
+    path::{Path, PathBuf},
 };
 
 ///
@@ -87,7 +88,7 @@ pub trait HostsTrait: Send + Sync {
     /// # Errors
     ///
     /// If the directory topdir/pc cannot be read.
-    fn list_hosts(&self) -> Result<Vec<String>>;
+    fn list_hosts(&self) -> Result<Vec<Vec<u8>>>;
 
     ///
     /// List all the backups for a given host (used the format separed by tab).
@@ -105,7 +106,7 @@ pub trait HostsTrait: Send + Sync {
     /// # Errors
     ///
     /// If the file topdir/pc/<hostname>/backups cannot be read.
-    fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>>;
+    fn list_backups(&self, hostname: &[u8]) -> Result<Vec<BackupInformation>>;
 
     /// List all the backups until the filled backup for a given backup.
     ///
@@ -124,27 +125,27 @@ pub trait HostsTrait: Send + Sync {
     ///
     /// If the file topdir/pc/<hostname>/backups cannot be read.
     ///
-    fn list_backups_to_fill(&self, hostname: &str, backup_number: u32) -> Vec<BackupInformation>;
+    fn list_backups_to_fill(&self, hostname: &[u8], backup_number: u32) -> Vec<BackupInformation>;
 }
 
 pub struct Hosts {
-    topdir: String,
+    topdir: PathBuf,
 }
 
 impl Hosts {
     #[must_use]
-    pub fn new(topdir: &str) -> Self {
+    pub fn new<P: AsRef<Path>>(topdir: P) -> Self {
         Hosts {
-            topdir: topdir.to_string(),
+            topdir: topdir.as_ref().to_path_buf(),
         }
     }
 }
 
 // Implements trait
 impl HostsTrait for Hosts {
-    fn list_hosts(&self) -> Result<Vec<String>> {
-        info!("Listing hosts in {}", self.topdir);
-        let pc_dir = std::path::Path::new(&self.topdir).join("pc");
+    fn list_hosts(&self) -> Result<Vec<Vec<u8>>> {
+        info!("Listing hosts in {}", self.topdir.display());
+        let pc_dir = self.topdir.join("pc");
         let mut hosts = Vec::new();
 
         for entry in std::fs::read_dir(pc_dir)? {
@@ -152,12 +153,7 @@ impl HostsTrait for Hosts {
                 Ok(entry) => {
                     let path = entry.path();
                     if path.is_dir() {
-                        let host = path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_str()
-                            .unwrap_or_default()
-                            .to_string();
+                        let host = osstr_to_vec(path.file_name().unwrap_or_default());
 
                         hosts.push(host);
                     }
@@ -173,11 +169,12 @@ impl HostsTrait for Hosts {
         Ok(hosts)
     }
 
-    fn list_backups(&self, hostname: &str) -> Result<Vec<BackupInformation>> {
-        info!("Listing backups for {hostname}");
+    fn list_backups(&self, hostname: &[u8]) -> Result<Vec<BackupInformation>> {
+        let hostname_str = vec_to_osstr(hostname);
+        info!("Listing backups for {}", hostname_str.to_string_lossy());
 
         let mut backups = Vec::new();
-        let path = format!("{}/pc/{hostname}/backups", &self.topdir);
+        let path = self.topdir.join("pc").join(hostname_str).join("backups");
 
         // Open the file and read each line
         // Fields are separated by tab
@@ -224,7 +221,7 @@ impl HostsTrait for Hosts {
         Ok(backups)
     }
 
-    fn list_backups_to_fill(&self, hostname: &str, backup_number: u32) -> Vec<BackupInformation> {
+    fn list_backups_to_fill(&self, hostname: &[u8], backup_number: u32) -> Vec<BackupInformation> {
         let backups = self.list_backups(hostname).unwrap_or_else(|_| Vec::new());
         let backups = backups.iter().filter(|backup| backup.num >= backup_number);
         let mut backups_to_search: Vec<crate::hosts::BackupInformation> = Vec::new();
