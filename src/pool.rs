@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use log::debug;
 
@@ -46,19 +46,19 @@ use crate::util;
 /// match result {
 ///     Ok((path, is_compressed)) => {
 ///         if is_compressed {
-///             println!("Compressed file found at: {}", path);
+///             println!("Compressed file found at: {path:?}");
 ///         } else {
-///             println!("Uncompressed file found at: {}", path);
+///             println!("Uncompressed file found at: {path:?}");
 ///         }
 ///     },
-///     Err(err) => println!("Error: {}", err),
+///     Err(err) => println!("Error: {err}"),
 /// }
 /// ```
-pub fn find_file_in_backuppc(
-    topdir: &str,
+pub fn find_file_in_backuppc<P: AsRef<Path>>(
+    topdir: P,
     file_hash: &[u8],
     collid: Option<u64>,
-) -> Result<(String, bool), String> {
+) -> Result<(PathBuf, bool), String> {
     if file_hash.len() < 2 {
         return Err(format!(
             "File hash {} must be at least 2 bytes long",
@@ -75,13 +75,15 @@ pub fn find_file_in_backuppc(
     };
     let file_hash = format!("{collid}{file_hash}");
 
-    let pool_path = Path::new(topdir)
+    let pool_path = topdir
+        .as_ref()
         .join("pool")
         .join(&firsts)
         .join(&seconds)
         .join(&file_hash);
 
-    let cpool_path = Path::new(topdir)
+    let cpool_path = topdir
+        .as_ref()
         .join("cpool")
         .join(&firsts)
         .join(&seconds)
@@ -89,12 +91,10 @@ pub fn find_file_in_backuppc(
 
     if pool_path.exists() {
         debug!("Found file in pool: {:?}", pool_path);
-        let path = pool_path.to_str().ok_or("pool path not exists")?;
-        Ok((path.to_string(), false))
+        Ok((pool_path, false))
     } else if cpool_path.exists() {
         debug!("Found file in cpool: {:?}", cpool_path);
-        let path = cpool_path.to_str().ok_or("cpool path not exists")?;
-        Ok((path.to_string(), true))
+        Ok((cpool_path, true))
     } else {
         debug!("File {file_hash} does not exist");
         Err(format!("File {file_hash} does not exist"))

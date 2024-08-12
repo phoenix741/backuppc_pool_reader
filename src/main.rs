@@ -1,15 +1,15 @@
-
 use backuppc_pool_reader::attribute_file::{Search, SearchTrait};
 use backuppc_pool_reader::compress::BackupPCReader;
 use backuppc_pool_reader::decode_attribut::{AttributeFile, FileAttributes, FileType};
 use backuppc_pool_reader::filesystem::BackupPCFS;
 use backuppc_pool_reader::hosts::{Hosts, HostsTrait};
 use backuppc_pool_reader::pool::find_file_in_backuppc;
-use backuppc_pool_reader::util::{hex_string_to_vec, vec_to_hex_string};
+use backuppc_pool_reader::util::{hex_string_to_vec, vec_to_hex_string, vec_to_osstr};
 
 use clap::{Parser, Subcommand};
 use log::info;
 use std::env;
+use std::path::Path;
 use std::{
     fs::File,
     io::{Error, Read, Write},
@@ -86,12 +86,12 @@ fn reader_to_stdout<R: Read>(reader: &mut R) -> Result<(), Error> {
     }
 }
 
-fn uncompress_to(input_file: &str) -> Result<Box<dyn Read>, Error> {
+fn uncompress_to<P: AsRef<Path>>(input_file: P) -> Result<Box<dyn Read>, Error> {
     let input_file = File::open(input_file)?;
     Ok(Box::new(BackupPCReader::new(input_file)))
 }
 
-fn plain_to(input_file: &str) -> Result<Box<dyn Read>, Error> {
+fn plain_to<P: AsRef<Path>>(input_file: P) -> Result<Box<dyn Read>, Error> {
     let input_file = File::open(input_file)?;
     Ok(Box::new(std::io::BufReader::new(input_file)))
 }
@@ -146,16 +146,18 @@ fn print_ls(mut attrs: Vec<FileAttributes>) {
             if attr.mode & 0o001 != 0 { "x" } else { "-" }
         );
 
+        let name = vec_to_osstr(&attr.name);
+
         println!(
-            "{} {} {: <5} {: <5} {: <10} {: <12} {} {}",
+            "{} {} {: <5} {: <5} {: <10} {: <12} {: <32} {}",
             mode,
             attr.nlinks,
             attr.uid,
             attr.gid,
             attr.size,
             attr.mtime,
-            attr.name,
-            vec_to_hex_string(&attr.bpc_digest.digest)
+            vec_to_hex_string(&attr.bpc_digest.digest),
+            name.to_string_lossy(),
         );
     }
 }
@@ -189,8 +191,12 @@ fn read_file_to_stdout(
             ));
         };
 
+        let hostname = hostname.as_bytes();
+        let share = share.as_bytes();
+        let file = file.as_bytes();
+
         let attrs = search
-            .get_file(&hostname, backup_number, &share, file)
+            .get_file(hostname, backup_number, share, file)
             .unwrap();
         if attrs.len() == 1 {
             if attrs[0].bpc_digest.len > 0 {
@@ -235,7 +241,7 @@ fn main() {
     env_logger::init();
 
     let args = Cli::parse();
-    let subcommand = args.subcommand.expect("No subcommand provided");
+    let subcommand = args.subcommand;
 
     let topdir = match env::var("BPC_TOPDIR") {
         Ok(value) => value,
@@ -245,34 +251,38 @@ fn main() {
     let hosts = Hosts::new(&topdir);
 
     match subcommand {
-        Commands::Cat {
+        Some(Commands::Cat {
             path,
             host,
             number,
             share,
-        } => {
+        }) => {
             read_file_to_stdout(&search, &topdir, host, number, share, &path).unwrap();
         }
-        Commands::DecodeAttribute { path } => {
+        Some(Commands::DecodeAttribute { path }) => {
             read_file_attribute_to_stdout(&topdir, &path).unwrap();
         }
-        Commands::Ls {
+        Some(Commands::Ls {
             host,
             number,
             share,
             path,
-        } => {
+        }) => {
+            let host = host.as_bytes();
+            let share = share.as_bytes();
+            let path = path.as_bytes();
+
             let attrs = search
-                .list_file_from_dir(&host, number, Some(&share), Some(&path))
+                .list_file_from_dir(host, number, Some(share), Some(path))
                 .unwrap();
             print_ls(attrs);
         }
-        Commands::Hosts {} => {
+        Some(Commands::Hosts {}) => {
             let hosts = hosts.list_hosts();
             match hosts {
                 Ok(hosts) => {
                     for host in hosts {
-                        println!("{host}");
+                        println!("{}", vec_to_osstr(&host).to_string_lossy());
                     }
                 }
                 Err(message) => {
@@ -280,8 +290,10 @@ fn main() {
                 }
             }
         }
-        Commands::Backups { host } => {
-            let backups = hosts.list_backups(&host);
+        Some(Commands::Backups { host }) => {
+            let host = host.as_bytes();
+
+            let backups = hosts.list_backups(host);
             match backups {
                 Ok(backups) => {
                     for backup in backups {
@@ -293,10 +305,13 @@ fn main() {
                 }
             }
         }
-        Commands::Mount { path } => {
+        Some(Commands::Mount { path }) => {
             let options = [];
 
             fuser::mount2(BackupPCFS::new(&topdir), path, &options).unwrap();
+        }
+        None => {
+            println!("No subcommand specified");
         }
     }
 }

@@ -103,7 +103,7 @@ pub struct BpcDigest {
 /// Structure representing file attributes.
 pub struct FileAttributes {
     /// Name of the file.
-    pub name: String,
+    pub name: Vec<u8>,
     /// Type of the file.
     pub type_: FileType,
     /// Compression level of the file.
@@ -125,7 +125,7 @@ pub struct FileAttributes {
     /// Inode number of the file.
     pub inode: u64,
 
-    /// BackupPC digest of the file.
+    /// `BackupPC` digest of the file.
     pub bpc_digest: BpcDigest,
 
     /// Number of extended attributes entries.
@@ -136,9 +136,9 @@ pub struct FileAttributes {
 
 impl FileAttributes {
     #[must_use]
-    pub fn from_host(host: String) -> Self {
+    pub fn from_host(host: &[u8]) -> Self {
         Self {
-            name: host,
+            name: host.to_vec(),
             type_: FileType::Dir,
             compress: 0,
             mode: 0,
@@ -160,7 +160,7 @@ impl FileAttributes {
     #[must_use]
     pub fn from_backup(backup: &BackupInformation) -> Self {
         Self {
-            name: backup.num.to_string(),
+            name: backup.num.to_string().into_bytes(),
             type_: FileType::Dir,
             compress: 0,
             mode: 0,
@@ -180,9 +180,9 @@ impl FileAttributes {
     }
 
     #[must_use]
-    pub fn from_share(share: String) -> Self {
+    pub fn from_share(share: &[u8]) -> Self {
         Self {
-            name: share,
+            name: share.to_vec(),
             type_: FileType::Dir,
             compress: 0,
             mode: 0,
@@ -248,7 +248,6 @@ impl FileAttributes {
         let filename_len: usize = reader.read_varint()?;
         let mut name = vec![0u8; filename_len];
         reader.read_exact(&mut name)?;
-        let name = String::from_utf8(name).unwrap_or_default();
 
         let xattr_num_entries: u64 = reader.read_varint().unwrap_or_default();
         let type_: FileType = match reader.read_varint().unwrap_or(9) {

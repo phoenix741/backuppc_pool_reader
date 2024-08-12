@@ -3,6 +3,7 @@ use lru::LruCache;
 use std::hash::Hasher;
 use std::io::Read;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use twox_hash::XxHash64;
 
@@ -19,7 +20,7 @@ use std::{collections::HashMap, ffi::OsStr};
 use crate::attribute_file::Search;
 use crate::decode_attribut::{FileAttributes, FileType as BackupPCFileType};
 use crate::hosts::Hosts;
-use crate::util::Result;
+use crate::util::{osstr_to_vec, vec_to_osstr, Result};
 use crate::view::BackupPC;
 
 const TTL_HOST: Duration = Duration::from_secs(86_400);
@@ -32,7 +33,7 @@ const CREATE_TIME: SystemTime = UNIX_EPOCH;
 
 #[derive(PartialEq, Default, Debug)]
 struct CacheElement {
-    pub path: Vec<String>,
+    pub path: Vec<Vec<u8>>,
 
     pub parent_ino: u64,
 }
@@ -44,7 +45,7 @@ const ROOT_ELEMENT: CacheElement = CacheElement {
 
 #[derive(Clone, Debug)]
 pub struct BackupPCFileAttribute {
-    pub name: String,
+    pub name: Vec<u8>,
     pub attr: FileAttr,
 }
 
@@ -112,9 +113,9 @@ pub struct BackupPCFS {
 }
 
 impl BackupPCFS {
-    pub fn new(topdir: &str) -> Self {
-        let hosts = Box::new(Hosts::new(topdir));
-        let search = Box::new(Search::new(topdir));
+    pub fn new<P: AsRef<Path>>(topdir: P) -> Self {
+        let hosts = Box::new(Hosts::new(&topdir));
+        let search = Box::new(Search::new(&topdir));
 
         BackupPCFS {
             inodes: HashMap::new(),
@@ -126,8 +127,8 @@ impl BackupPCFS {
 
     fn generate_new_ino(&self, elt: &CacheElement) -> u64 {
         let mut hasher = XxHash64::with_seed(0);
-        let key = elt.path.join("/");
-        hasher.write(key.as_bytes());
+        let key = elt.path.join(&b'/');
+        hasher.write(&key);
         let mut hash = hasher.finish();
 
         // Vérifiez si l'ino est déjà utilisé, si oui, utilisez le sondage quadratique pour trouver un ino libre
@@ -154,8 +155,8 @@ impl BackupPCFS {
         }
     }
 
-    fn list_files(&mut self, ino: u64, path: Vec<&str>) -> Result<Vec<BackupPCFileAttribute>> {
-        let files = self.view.list(&path)?;
+    fn list_files(&mut self, ino: u64, path: &[&[u8]]) -> Result<Vec<BackupPCFileAttribute>> {
+        let files = self.view.list(path)?;
 
         let result = files
             .into_iter()
@@ -167,8 +168,7 @@ impl BackupPCFS {
                     return None;
                 }
 
-                let mut path: Vec<String> =
-                    path.iter().map(std::string::ToString::to_string).collect();
+                let mut path: Vec<Vec<u8>> = path.iter().map(|c| c.to_vec()).collect();
                 path.push(file.name.clone());
 
                 let key = CacheElement {
@@ -191,7 +191,7 @@ impl BackupPCFS {
         let cache_element = match ino {
             0 => {
                 return Ok(vec![BackupPCFileAttribute {
-                    name: "..".to_string(),
+                    name: b"..".to_vec(),
                     attr: ROOT_ELEMENT_ATTR,
                 }])
             }
@@ -202,10 +202,10 @@ impl BackupPCFS {
 
         let path = cache_element.path.clone();
 
-        match self.list_files(ino, path.iter().map(std::string::String::as_str).collect()) {
+        match self.list_files(ino, &path.iter().map(Vec::as_slice).collect::<Vec<&[u8]>>()) {
             Ok(files) => Ok(files),
             Err(err) => {
-                eprintln!("Error listing files of {}: {}", path.join("/"), err);
+                eprintln!("Error listing files of {:?}: {}", path.join(&b'/'), err);
                 Err(err)
             }
         }
@@ -236,9 +236,10 @@ impl BackupPCFS {
             _ => TTL_REST,
         };
 
+        let name = osstr_to_vec(name);
         let attributes = self.list_attributes_with_cache(ino);
         let attribute = match attributes {
-            Ok(attrs) => attrs.into_iter().find(|attr| attr.name.as_str() == name),
+            Ok(attrs) => attrs.into_iter().find(|attr| attr.name == name),
             Err(_) => None,
         };
 
@@ -269,15 +270,20 @@ impl BackupPCFS {
                 continue;
             }
 
+            let name = vec_to_osstr(&cache_element.name);
+
             debug!(
                 "Adding entry {} to ino {}, offset: {}, kind: {:?}",
-                cache_element.name, cache_element.attr.ino, current_offset, cache_element.attr.kind,
+                name.to_string_lossy(),
+                cache_element.attr.ino,
+                current_offset,
+                cache_element.attr.kind,
             );
             let result = reply.add(
                 cache_element.attr.ino,
                 current_offset as i64,
                 cache_element.attr.kind,
-                &cache_element.name,
+                name,
             );
             if result {
                 break;
@@ -322,12 +328,12 @@ impl BackupPCFS {
         ))?;
 
         let path = cache_element.path.clone();
-        let path_refs: Vec<&str> = path.iter().map(std::string::String::as_str).collect();
+        let path_refs: Vec<&[u8]> = path.iter().map(std::vec::Vec::as_ref).collect();
 
         match self.view.read_file(&path_refs) {
             Ok(reader) => Ok(reader),
             Err(err) => {
-                eprintln!("Can't open the file {}: {}", path.join("/"), err);
+                eprintln!("Can't open the file {:?}: {}", path.join(&b'/'), err);
                 Err(err)
             }
         }

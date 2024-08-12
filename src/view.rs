@@ -16,6 +16,7 @@ use std::fs::File;
 ///
 use std::io::Read;
 use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
 
 use crate::compress::BackupPCReader;
 use crate::decode_attribut::{FileAttributes, FileType};
@@ -30,7 +31,7 @@ use crate::attribute_file::SearchTrait;
 #[cfg(test)]
 use crate::hosts::HostsTrait;
 use crate::pool::find_file_in_backuppc;
-use crate::util::{unique, vec_to_hex_string, Result};
+use crate::util::{mangle_filename, unique, vec_to_hex_string, vec_to_osstr, Result};
 
 // Empty md5 digest (Vec<u8>) : d41d8cd98f00b204e9800998ecf8427e
 const EMPTY_MD5_DIGEST: [u8; 16] = [
@@ -38,16 +39,16 @@ const EMPTY_MD5_DIGEST: [u8; 16] = [
 ];
 
 pub struct BackupPC {
-    topdir: String,
+    topdir: PathBuf,
     hosts: Box<dyn HostsTrait>,
     search: Box<dyn SearchTrait>,
-    cache: LruCache<String, Vec<FileAttributes>>,
+    cache: LruCache<Vec<u8>, Vec<FileAttributes>>,
 }
 
-fn sanitize_path(path: &str) -> Vec<&str> {
-    path.split('/')
+fn sanitize_path(path: &[u8]) -> Vec<&[u8]> {
+    path.split(|&byte| byte == b'/')
         .filter(|s| !s.is_empty())
-        .collect::<Vec<&str>>()
+        .collect::<Vec<&[u8]>>()
 }
 
 const CACHE_SIZE: usize = 1000;
@@ -70,9 +71,13 @@ impl BackupPC {
     ///
     /// The method can't panic
     #[must_use]
-    pub fn new(topdir: &str, hosts: Box<dyn HostsTrait>, search: Box<dyn SearchTrait>) -> Self {
+    pub fn new<P: AsRef<Path>>(
+        topdir: P,
+        hosts: Box<dyn HostsTrait>,
+        search: Box<dyn SearchTrait>,
+    ) -> Self {
         BackupPC {
-            topdir: topdir.to_string(),
+            topdir: topdir.as_ref().to_path_buf(),
             hosts,
             search,
             cache: LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap()),
@@ -97,14 +102,14 @@ impl BackupPC {
     /// If the capacity is zero.
     ///
     #[must_use]
-    pub fn new_with_capacity(
-        topdir: &str,
+    pub fn new_with_capacity<P: AsRef<Path>>(
+        topdir: P,
         hosts: Box<dyn HostsTrait>,
         search: Box<dyn SearchTrait>,
         capacity: usize,
     ) -> Self {
         BackupPC {
-            topdir: topdir.to_string(),
+            topdir: topdir.as_ref().to_path_buf(),
             hosts,
             search,
             cache: LruCache::new(NonZeroUsize::new(capacity).unwrap()),
@@ -126,7 +131,7 @@ impl BackupPC {
     /// A vector of `FileAttributes` instances.
     fn list_file_from_inode(
         &mut self,
-        hostname: &str,
+        hostname: &[u8],
         backup_number: u32,
         inode: u64,
     ) -> Result<Vec<FileAttributes>> {
@@ -136,8 +141,8 @@ impl BackupPC {
         let attrib_file = format!("attrib{inode_file:02x}_");
 
         let key = format!("{attrib_path}/{attrib_file}");
-
         info!("List file from inode {inode} with the key {key}");
+        let key = key.into_bytes();
 
         if let Some(cached_result) = self.cache.get(&key) {
             return Ok(cached_result.clone());
@@ -169,7 +174,7 @@ impl BackupPC {
     /// A `FileAttributes` instance.
     fn get_inode(
         &mut self,
-        hostname: &str,
+        hostname: &[u8],
         backup_number: u32,
         inode: u64,
     ) -> Result<Option<FileAttributes>> {
@@ -179,8 +184,8 @@ impl BackupPC {
         }
 
         let inode_str = vec_to_hex_string(&inode_vec);
-
         info!("Search inode {inode} with the str form {inode_str}");
+        let inode_str = inode_str.as_bytes();
 
         let files = self.list_file_from_inode(hostname, backup_number, inode)?;
         let inode = files.iter().find(|i| i.name == inode_str);
@@ -207,21 +212,23 @@ impl BackupPC {
     ///
     fn list_file_from_dir(
         &mut self,
-        hostname: &str,
+        hostname: &[u8],
         backup_number: u32,
-        share: Option<&str>,
-        filename: Option<&str>,
+        share: Option<&[u8]>,
+        filename: Option<&[u8]>,
     ) -> Result<Vec<FileAttributes>> {
+        let hostname_str = vec_to_osstr(hostname);
         info!(
-            "List file from dir: {hostname}/{backup_number}/{}/{}",
-            share.unwrap_or_default(),
-            filename.unwrap_or_default()
+            "List file from dir: {}/{backup_number}/{}/{}",
+            hostname_str.to_string_lossy(),
+            vec_to_osstr(share.unwrap_or_default()).to_string_lossy(),
+            vec_to_osstr(filename.unwrap_or_default()).to_string_lossy()
         );
         // First search the next oldest filled backup next to the current backup
         let backups_to_search = self.hosts.list_backups_to_fill(hostname, backup_number);
 
         // Next search the file from the oldest filled backup to the current backup
-        let mut files: HashMap<String, FileAttributes> = HashMap::new();
+        let mut files: HashMap<Vec<u8>, FileAttributes> = HashMap::new();
         for backup in backups_to_search {
             info!("Search in backup: {backup}", backup = backup.num);
 
@@ -237,7 +244,7 @@ impl BackupPC {
                         let inode = file.inode;
                         info!(
                             "File {file} has nlinks {nlinks} (inode: {inode})",
-                            file = file.name,
+                            file = mangle_filename(&file.name),
                             nlinks = file.nlinks
                         );
                         let inode_file = self.get_inode(hostname, backup.num, inode)?;
@@ -268,8 +275,8 @@ impl BackupPC {
     /// # Errors
     ///
     /// An error can't be returned if the hosts, backup, can't be read
-    pub fn list_shares(&mut self, hostname: &str, backup_number: u32) -> Result<Vec<String>> {
-        info!("List shares: {hostname}/{backup_number}");
+    pub fn list_shares(&mut self, hostname: &[u8], backup_number: u32) -> Result<Vec<Vec<u8>>> {
+        info!("List shares: {hostname:?}/{backup_number}");
         let files = self.list_file_from_dir(hostname, backup_number, None, None)?;
         let shares = files
             .iter()
@@ -296,18 +303,21 @@ impl BackupPC {
     /// An error can't be returned if the hosts, backup, can't be read
     fn list_shares_of(
         &mut self,
-        hostname: &str,
+        hostname: &[u8],
         backup_number: u32,
-        path: &[&str],
-    ) -> Result<(Vec<String>, Option<String>, usize)> {
+        path: &[&[u8]],
+    ) -> Result<(Vec<Vec<u8>>, Option<Vec<u8>>, usize)> {
+        let hostname_str = vec_to_osstr(hostname);
+        let path_str = vec_to_osstr(&path.join(&b'/'));
         info!(
-            "List shares of: {hostname}/{backup_number}/{path}",
-            path = path.join("/")
+            "List shares of: {}/{backup_number}/{}",
+            hostname_str.to_string_lossy(),
+            path_str.to_string_lossy()
         );
         let shares = self.list_file_from_dir(hostname, backup_number, None, None)?;
         let mut shares = shares.iter().map(|share| &share.name).collect::<Vec<_>>();
 
-        let mut selected_share: Option<String> = None;
+        let mut selected_share: Option<Vec<u8>> = None;
         let mut share_size = 0;
 
         // Ensure that shares are sorted by length (longest last) to ensure that the selected share is the share that
@@ -315,7 +325,7 @@ impl BackupPC {
         shares.sort_by_key(|a| a.len());
 
         // Filter the shares that are not in the path
-        let shares: Vec<String> = shares
+        let shares: Vec<Vec<u8>> = shares
             .into_iter()
             .filter_map(|share| {
                 let share_array = sanitize_path(share);
@@ -325,7 +335,7 @@ impl BackupPC {
                     selected_share = Some(share.clone());
                     None
                 } else if share_array.starts_with(path) {
-                    Some(share_array[path.len()..][0].to_string())
+                    Some(share_array[path.len()..][0].to_vec())
                 } else {
                     None
                 }
@@ -350,12 +360,17 @@ impl BackupPC {
     /// # Errors
     ///
     /// An error can't be returned if the hosts, backup, can't be read
-    pub fn direct_list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
-        info!("List: {path}", path = path.join("/"));
+    pub fn direct_list(&mut self, path: &[&[u8]]) -> Result<Vec<FileAttributes>> {
+        let joined_path = vec_to_osstr(&path.join(&b'/'));
+        info!("List: {path:?}", path = joined_path.to_string_lossy());
+
         match path.len() {
             0 => {
                 let hosts = self.hosts.list_hosts()?;
-                Ok(hosts.into_iter().map(FileAttributes::from_host).collect())
+                Ok(hosts
+                    .into_iter()
+                    .map(|host| FileAttributes::from_host(&host))
+                    .collect())
             }
             1 => {
                 let backups = self.hosts.list_backups(path[0]);
@@ -379,19 +394,29 @@ impl BackupPC {
                 }
             }
             _ => {
-                let (shares, selected_share, share_size) =
-                    self.list_shares_of(path[0], path[1].parse::<u32>().unwrap_or(0), &path[2..])?;
+                let backup_number = std::str::from_utf8(path[1])
+                    .map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8")
+                    })?
+                    .parse::<u32>()
+                    .unwrap_or(0);
 
-                let shares = shares.into_iter().map(FileAttributes::from_share).collect();
+                let (shares, selected_share, share_size) =
+                    self.list_shares_of(path[0], backup_number, &path[2..])?;
+
+                let shares = shares
+                    .into_iter()
+                    .map(|share| FileAttributes::from_share(&share))
+                    .collect();
 
                 match selected_share {
                     None => Ok(shares),
                     Some(selected_share) => {
                         let files = self.list_file_from_dir(
                             path[0],
-                            path[1].parse::<u32>().unwrap_or(0),
+                            backup_number,
                             Some(&selected_share),
-                            Some(&path[(2 + share_size)..].join("/")),
+                            Some(&path[(2 + share_size)..].join(&b'/')),
                         )?;
 
                         // Add detected shares to files
@@ -425,13 +450,13 @@ impl BackupPC {
     ///
     /// An error can't be returned if the hosts, backup, can't be read
     ///
-    pub fn list(&mut self, path: &[&str]) -> Result<Vec<FileAttributes>> {
+    pub fn list(&mut self, path: &[&[u8]]) -> Result<Vec<FileAttributes>> {
         let key = path
             .iter()
             .filter(|s| !s.is_empty())
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<String>>()
-            .join("/");
+            .copied()
+            .collect::<Vec<&[u8]>>()
+            .join(&b'/');
 
         if let Some(cached_result) = self.cache.get(&key) {
             return Ok(cached_result.clone());
@@ -458,12 +483,13 @@ impl BackupPC {
     ///
     /// If the file is not found, an error is returned.
     ///
-    pub fn read_file(&mut self, path: &[&str]) -> Result<Box<dyn Read + Sync + Send>> {
-        info!("Read file: {path}", path = path.join("/"));
+    pub fn read_file(&mut self, path: &[&[u8]]) -> Result<Box<dyn Read + Sync + Send>> {
+        let fullpath = path.join(&b'/');
+        info!("Read file: {fullpath:?}");
         let filename = path.last().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("Failed to get filename: {}", path.join("/")),
+                format!("Failed to get filename: {fullpath:?}"),
             )
         })?;
         let path = &path[..path.len() - 1];
@@ -476,7 +502,7 @@ impl BackupPC {
             .ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("File not found (not in attributs): {}", path.join("/")),
+                    format!("File not found (not in attributs): {fullpath:?}"),
                 )
             })?;
 
@@ -577,9 +603,9 @@ mod tests {
         }
     }
 
-    fn create_file_attributes(name: &str, type_: FileType) -> FileAttributes {
+    fn create_file_attributes(name: &[u8], type_: FileType) -> FileAttributes {
         FileAttributes {
-            name: name.to_string(),
+            name: name.to_vec(),
             type_,
             compress: 0,
 
@@ -606,7 +632,7 @@ mod tests {
         let mut hosts_mock = Box::new(MockHostsTrait::new());
         let mut search_mock = Box::new(MockSearchTrait::new());
 
-        let hosts = vec!["pc-1".to_string(), "pc-2".to_string(), "pc-3".to_string()];
+        let hosts = vec![b"pc-1".to_vec(), b"pc-2".to_vec(), b"pc-3".to_vec()];
 
         let backups_pc1 = vec![create_mock_backup(1), create_mock_backup(2)];
 
@@ -624,110 +650,110 @@ mod tests {
 
         hosts_mock
             .expect_list_backups()
-            .with(eq("pc-1"))
+            .with(eq(b"pc-1".to_vec()))
             .returning(move |_| Ok(backups_pc1.clone()));
 
         hosts_mock
             .expect_list_backups()
-            .with(eq("pc-2"))
+            .with(eq(b"pc-2".to_vec()))
             .returning(move |_| Ok(backups_pc2.clone()));
 
         hosts_mock
             .expect_list_backups()
-            .with(eq("pc-3"))
+            .with(eq(b"pc-3".to_vec()))
             .returning(move |_| Ok(backups_pc3.clone()));
 
         hosts_mock
             .expect_list_backups_to_fill()
-            .with(eq("pc-1"), eq(1))
+            .with(eq(b"pc-1".to_vec()), eq(1))
             .returning(|_, _| vec![create_mock_backup(1)]);
 
         search_mock
             .expect_list_file_from_dir()
             .withf(|hostname, backup_number, share, path| {
-                hostname == "pc-1" && backup_number == &1 && share.is_none() && path.is_none()
+                hostname == b"pc-1" && backup_number == &1 && share.is_none() && path.is_none()
             })
             .returning(move |_, _, _, _| {
                 Ok(vec![
-                    create_file_attributes("/home", FileType::Dir),
-                    create_file_attributes("/volume1/test", FileType::Dir),
-                    create_file_attributes("/volume1/test2", FileType::Dir),
+                    create_file_attributes(b"/home", FileType::Dir),
+                    create_file_attributes(b"/volume1/test", FileType::Dir),
+                    create_file_attributes(b"/volume1/test2", FileType::Dir),
                 ])
             });
 
         search_mock
             .expect_list_file_from_dir()
             .withf(|hostname, backup_number, share, path| {
-                hostname == "pc-1" && backup_number == &2 && share.is_none() && path.is_none()
+                hostname == b"pc-1" && backup_number == &2 && share.is_none() && path.is_none()
             })
             .returning(move |_, _, _, _| {
                 Ok(vec![
-                    create_file_attributes("/volume1/test", FileType::Dir),
-                    create_file_attributes("/volume1/test2", FileType::Dir),
-                    create_file_attributes("/volume2", FileType::Dir),
+                    create_file_attributes(b"/volume1/test", FileType::Dir),
+                    create_file_attributes(b"/volume1/test2", FileType::Dir),
+                    create_file_attributes(b"/volume2", FileType::Dir),
                 ])
             });
 
         search_mock
             .expect_list_file_from_dir()
             .withf(|hostname, backup_number, share, path| {
-                hostname == "pc-1"
+                hostname == b"pc-1"
                     && backup_number == &1
-                    && share.is_some_and(|share| share == "/volume1/test")
+                    && share.is_some_and(|share| share == b"/volume1/test")
                     && path.is_some_and(|path| path.is_empty())
             })
             .returning(move |_, _, _, _| {
                 Ok(vec![
-                    create_file_attributes("supertest", FileType::Dir),
-                    create_file_attributes("toto", FileType::Dir),
+                    create_file_attributes(b"supertest", FileType::Dir),
+                    create_file_attributes(b"toto", FileType::Dir),
                 ])
             });
 
         search_mock
             .expect_list_file_from_dir()
             .withf(|hostname, backup_number, share, path| {
-                hostname == "pc-1"
+                hostname == b"pc-1"
                     && backup_number == &1
-                    && share.is_some_and(|share| share == "/volume1/test")
-                    && path.is_some_and(|path| path == "supertest")
+                    && share.is_some_and(|share| share == b"/volume1/test")
+                    && path.is_some_and(|path| path == b"supertest")
             })
             .returning(move |_, _, _, _| {
                 Ok(vec![
-                    create_file_attributes("de", FileType::Dir),
-                    create_file_attributes("test2", FileType::Dir),
+                    create_file_attributes(b"de", FileType::Dir),
+                    create_file_attributes(b"test2", FileType::Dir),
                 ])
             });
 
         search_mock
             .expect_list_file_from_dir()
             .withf(|hostname, backup_number, share, path| {
-                hostname == "pc-1"
+                hostname == b"pc-1"
                     && backup_number == &1
-                    && share.is_some_and(|share| share == "/volume1/test")
-                    && path.is_some_and(|path| path == "supertest/de")
+                    && share.is_some_and(|share| share == b"/volume1/test")
+                    && path.is_some_and(|path| path == b"supertest/de")
             })
             .returning(move |_, _, _, _| {
                 Ok(vec![
-                    create_file_attributes("test", FileType::Dir),
-                    create_file_attributes("en", FileType::Dir),
-                    create_file_attributes("es", FileType::Dir),
-                    create_file_attributes("fr", FileType::Dir),
+                    create_file_attributes(b"test", FileType::Dir),
+                    create_file_attributes(b"en", FileType::Dir),
+                    create_file_attributes(b"es", FileType::Dir),
+                    create_file_attributes(b"fr", FileType::Dir),
                 ])
             });
 
         search_mock
             .expect_list_file_from_dir()
             .withf(|hostname, backup_number, share, path| {
-                hostname == "pc-1"
+                hostname == b"pc-1"
                     && backup_number == &1
-                    && share.is_some_and(|share| share == "/volume1/test")
-                    && path.is_some_and(|path| path == "supertest/de/test")
+                    && share.is_some_and(|share| share == b"/volume1/test")
+                    && path.is_some_and(|path| path == b"supertest/de/test")
             })
             .returning(move |_, _, _, _| {
                 Ok(vec![
-                    create_file_attributes("file1", FileType::File),
-                    create_file_attributes("file2", FileType::File),
-                    create_file_attributes("file3", FileType::File),
+                    create_file_attributes(b"file1", FileType::File),
+                    create_file_attributes(b"file2", FileType::File),
+                    create_file_attributes(b"file3", FileType::File),
                 ])
             });
 
@@ -745,16 +771,16 @@ mod tests {
         result.sort_by(|a, b| a.name.cmp(&b.name));
 
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], create_file_attributes("pc-1", FileType::Dir));
-        assert_eq!(result[1], create_file_attributes("pc-2", FileType::Dir));
-        assert_eq!(result[2], create_file_attributes("pc-3", FileType::Dir));
+        assert_eq!(result[0], create_file_attributes(b"pc-1", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes(b"pc-2", FileType::Dir));
+        assert_eq!(result[2], create_file_attributes(b"pc-3", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1() {
         let mut view = create_view();
 
-        let result = view.list(&["pc-1"]);
+        let result = view.list(&[b"pc-1"]);
         assert!(result.is_ok());
 
         let mut result = result.unwrap();
@@ -762,15 +788,15 @@ mod tests {
 
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], create_file_attributes("1", FileType::Dir));
-        assert_eq!(result[1], create_file_attributes("2", FileType::Dir));
+        assert_eq!(result[0], create_file_attributes(b"1", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes(b"2", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1_backup1() {
         let mut view = create_view();
 
-        let result = view.list(&["pc-1", "1"]);
+        let result = view.list(&[b"pc-1", b"1"]);
         assert!(result.is_ok());
 
         let mut result = result.unwrap();
@@ -778,15 +804,15 @@ mod tests {
 
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], create_file_attributes("home", FileType::Dir));
-        assert_eq!(result[1], create_file_attributes("volume1", FileType::Dir));
+        assert_eq!(result[0], create_file_attributes(b"home", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes(b"volume1", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1_backup1_volume1() {
         let mut view = create_view();
 
-        let result = view.list(&["pc-1", "1", "volume1"]);
+        let result = view.list(&[b"pc-1", b"1", b"volume1"]);
         assert!(result.is_ok());
 
         let mut result = result.unwrap();
@@ -794,15 +820,15 @@ mod tests {
 
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], create_file_attributes("test", FileType::Dir));
-        assert_eq!(result[1], create_file_attributes("test2", FileType::Dir));
+        assert_eq!(result[0], create_file_attributes(b"test", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes(b"test2", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test() {
         let mut view = create_view();
 
-        let result = view.list(&["pc-1", "1", "volume1", "test"]);
+        let result = view.list(&[b"pc-1", b"1", b"volume1", b"test"]);
         assert!(result.is_ok());
 
         let mut result = result.unwrap();
@@ -812,16 +838,16 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert_eq!(
             result[0],
-            create_file_attributes("supertest", FileType::Dir)
+            create_file_attributes(b"supertest", FileType::Dir)
         );
-        assert_eq!(result[1], create_file_attributes("toto", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes(b"toto", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest() {
         let mut view = create_view();
 
-        let result = view.list(&["pc-1", "1", "volume1", "test", "supertest"]);
+        let result = view.list(&[b"pc-1", b"1", b"volume1", b"test", b"supertest"]);
         assert!(result.is_ok());
 
         let mut result = result.unwrap();
@@ -829,15 +855,15 @@ mod tests {
 
         println!("{:?}", result);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0], create_file_attributes("de", FileType::Dir));
-        assert_eq!(result[1], create_file_attributes("test2", FileType::Dir));
+        assert_eq!(result[0], create_file_attributes(b"de", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes(b"test2", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest_de() {
         let mut view = create_view();
 
-        let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de"]);
+        let result = view.list(&[b"pc-1", b"1", b"volume1", b"test", b"supertest", b"de"]);
         assert!(result.is_ok());
 
         let mut result = result.unwrap();
@@ -845,17 +871,25 @@ mod tests {
 
         println!("{:?}", result);
         assert_eq!(result.len(), 4);
-        assert_eq!(result[0], create_file_attributes("en", FileType::Dir));
-        assert_eq!(result[1], create_file_attributes("es", FileType::Dir));
-        assert_eq!(result[2], create_file_attributes("fr", FileType::Dir));
-        assert_eq!(result[3], create_file_attributes("test", FileType::Dir));
+        assert_eq!(result[0], create_file_attributes(b"en", FileType::Dir));
+        assert_eq!(result[1], create_file_attributes(b"es", FileType::Dir));
+        assert_eq!(result[2], create_file_attributes(b"fr", FileType::Dir));
+        assert_eq!(result[3], create_file_attributes(b"test", FileType::Dir));
     }
 
     #[test]
     fn test_list_host_pc1_backup1_volume1_test_supertest_de_test() {
         let mut view = create_view();
 
-        let result = view.list(&["pc-1", "1", "volume1", "test", "supertest", "de", "test"]);
+        let result = view.list(&[
+            b"pc-1",
+            b"1",
+            b"volume1",
+            b"test",
+            b"supertest",
+            b"de",
+            b"test",
+        ]);
         assert!(result.is_ok());
 
         let mut result = result.unwrap();
@@ -863,8 +897,8 @@ mod tests {
 
         println!("{:?}", result);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], create_file_attributes("file1", FileType::File));
-        assert_eq!(result[1], create_file_attributes("file2", FileType::File));
-        assert_eq!(result[2], create_file_attributes("file3", FileType::File));
+        assert_eq!(result[0], create_file_attributes(b"file1", FileType::File));
+        assert_eq!(result[1], create_file_attributes(b"file2", FileType::File));
+        assert_eq!(result[2], create_file_attributes(b"file3", FileType::File));
     }
 }
