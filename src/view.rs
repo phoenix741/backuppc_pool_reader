@@ -484,7 +484,7 @@ impl BackupPC {
     /// If the file is not found, an error is returned.
     ///
     pub fn read_file(&mut self, path: &[&[u8]]) -> Result<Box<dyn Read + Sync + Send>> {
-        let fullpath = path.join(&b'/');
+        let fullpath = vec_to_osstr(&path.join(&b'/'));
         info!("Read file: {fullpath:?}");
         let filename = path.last().ok_or_else(|| {
             std::io::Error::new(
