@@ -1,3 +1,10 @@
+## [2.0.1](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v2.0.0...v2.0.1) (2024-09-08)
+
+
+### Bug Fixes
+
+* fix error message 'not in attributes' ([5e66df0](https://gogs.shadoware.org/phoenix/backuppc_pool/commit/5e66df039fadf926ec7a84f90c89808cb7ea149a))
+
 # [2.0.0](https://gogs.shadoware.org/phoenix/backuppc_pool/compare/v1.2.2...v2.0.0) (2024-08-12)
 
 
